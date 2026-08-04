@@ -8,13 +8,14 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 APP_DATA = Path("/data")
 OPTIONS_FILE = Path("/data/options.json")
 DATABASE_FILE = APP_DATA / "mediahub.db"
 
-app = FastAPI(title="MediaHub", version="0.1.0-dev")
+app = FastAPI(title="MediaHub", version="0.1.1-dev")
 
 
 class MediaRequest(BaseModel):
@@ -144,6 +145,78 @@ def storage_snapshot(db: sqlite3.Connection, estimated_size_gb: float) -> dict:
 @app.on_event("startup")
 def startup() -> None:
     initialise_database()
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    return """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MediaHub</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; background: #111827; color: #f9fafb; }
+    main { max-width: 980px; margin: 0 auto; padding: 32px 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; }
+    p { color: #cbd5e1; line-height: 1.55; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 24px; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 14px; padding: 18px; }
+    .label { color: #94a3b8; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+    .value { margin-top: 8px; font-size: 1.15rem; font-weight: 700; }
+    .ok { color: #4ade80; }
+    .muted { color: #94a3b8; }
+    code { background: #0f172a; border-radius: 6px; padding: 2px 6px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MediaHub</h1>
+    <p>The MediaHub backend is running through Home Assistant Ingress. This is the initial foundation interface. Search, discovery, integrations and request management are being added next.</p>
+    <div class="grid">
+      <section class="card">
+        <div class="label">Service status</div>
+        <div class="value ok" id="service-status">Checking...</div>
+      </section>
+      <section class="card">
+        <div class="label">Version</div>
+        <div class="value" id="version">0.1.1-dev</div>
+      </section>
+      <section class="card">
+        <div class="label">Storage</div>
+        <div class="value" id="storage">Checking...</div>
+      </section>
+    </div>
+    <p class="muted">API endpoints are available relative to this page, including <code>api/health</code>, <code>api/storage</code>, <code>api/requests</code> and <code>api/audit</code>.</p>
+  </main>
+  <script>
+    async function loadStatus() {
+      try {
+        const health = await fetch('api/health').then(r => r.json());
+        document.getElementById('service-status').textContent = health.status === 'ok' ? 'Running' : 'Unavailable';
+        document.getElementById('version').textContent = health.version;
+      } catch (error) {
+        document.getElementById('service-status').textContent = 'Unavailable';
+      }
+
+      try {
+        const storage = await fetch('api/storage').then(async r => {
+          const body = await r.json();
+          if (!r.ok) throw new Error(body.detail || 'Storage unavailable');
+          return body;
+        });
+        document.getElementById('storage').textContent = `${storage.free_gb} GB free`;
+      } catch (error) {
+        document.getElementById('storage').textContent = 'Not configured';
+      }
+    }
+    loadStatus();
+  </script>
+</body>
+</html>
+"""
 
 
 @app.get("/api/health")
