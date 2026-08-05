@@ -11,11 +11,13 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from app.integrations import IntegrationTester, integration_configs
+
 APP_DATA = Path("/data")
 OPTIONS_FILE = Path("/data/options.json")
 DATABASE_FILE = APP_DATA / "mediahub.db"
 
-app = FastAPI(title="MediaHub", version="0.1.1-dev")
+app = FastAPI(title="MediaHub", version="0.2.0-dev")
 
 
 class MediaRequest(BaseModel):
@@ -182,7 +184,7 @@ def index() -> str:
       </section>
       <section class="card">
         <div class="label">Version</div>
-        <div class="value" id="version">0.1.1-dev</div>
+        <div class="value" id="version">0.2.0-dev</div>
       </section>
       <section class="card">
         <div class="label">Storage</div>
@@ -228,6 +230,18 @@ def health() -> dict:
 def get_storage() -> dict:
     with connect_db() as db:
         return storage_snapshot(db, 0.001)
+
+
+@app.get("/api/integrations/status")
+async def integration_status() -> dict:
+    tester = IntegrationTester()
+    services = await tester.test_all(integration_configs(load_options()))
+    return {
+        "services": services,
+        "connected": sum(service["status"] == "connected" for service in services),
+        "configured": sum(service["configured"] for service in services),
+        "total": len(services),
+    }
 
 
 @app.post("/api/requests")
