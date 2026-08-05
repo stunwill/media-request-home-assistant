@@ -18,7 +18,13 @@ MediaHub provides a family-friendly Home Assistant Ingress interface for discove
    - Audit events
    - Future adapters for TMDb, Radarr, Sonarr, and qBittorrent
 
-3. **SQLite persistence**
+3. **Integration boundary**
+   - Typed configuration for TMDb, Prowlarr, Radarr, Sonarr, and qBittorrent
+   - Vendor-supported health and system endpoints only
+   - Bounded timeouts and sanitised failure responses
+   - No direct private-tracker access
+
+4. **SQLite persistence**
    - Requests
    - Append-only audit events
    - Future users, roles, media cache, recommendations, and integration state

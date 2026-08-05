@@ -1,5 +1,5 @@
 name: MediaHub
-version: "0.1.1-dev"
+version: "0.2.0-dev"
 slug: mediahub
 description: Family-friendly movie and TV request management for Home Assistant
 url: https://github.com/stunwill/media-request-home-assistant
@@ -27,6 +27,8 @@ options:
     auto_approve: true
   integrations:
     tmdb_api_key: ""
+    prowlarr_url: "http://local-prowlarr:9696"
+    prowlarr_api_key: ""
     radarr_url: ""
     radarr_api_key: ""
     sonarr_url: ""
@@ -44,6 +46,8 @@ schema:
     auto_approve: bool
   integrations:
     tmdb_api_key: password
+    prowlarr_url: str
+    prowlarr_api_key: password
     radarr_url: str
     radarr_api_key: password
     sonarr_url: str
