@@ -115,7 +115,7 @@ INDEX_HTML = """
   <main class="shell">
     <header class="topbar">
       <div class="brand"><span class="mark">▶</span><span>MediaHub</span></div>
-      <span class="version" id="version">0.3.0-dev</span>
+      <span class="version" id="version">0.4.0-dev</span>
     </header>
 
     <section class="hero">

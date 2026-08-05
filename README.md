@@ -30,3 +30,11 @@ Open MediaHub from the Home Assistant sidebar as an administrator. The setup wiz
 Credentials entered in the wizard are stored in MediaHub's private `/data/mediahub-settings.json` file with owner-only permissions. Existing Home Assistant app options remain supported and act as base configuration, while wizard values override only the fields saved through MediaHub. Setup responses expose only URLs, usernames, and boolean credential-present flags.
 
 The discovery API requires the `SUPERVISOR_TOKEN` supplied by Home Assistant. When MediaHub runs outside Home Assistant for development, discovery reports itself unavailable without preventing manual configuration.
+
+## Users and roles
+
+MediaHub trusts Home Assistant Ingress for authentication and links each request to the signed-in Home Assistant user using the documented `X-Remote-User-Id`, `X-Remote-User-Name`, and `X-Remote-User-Display-Name` headers. Requests without an Ingress identity are rejected.
+
+The first authenticated MediaHub user is assigned the `admin` role. Later users start as `requester` until a MediaHub administrator changes their role. Administrators can manage integrations, audit history, and roles. Managers can view household requests and operational status. Requesters can create requests and view only their own request history.
+
+The Home Assistant sidebar panel remains restricted to Home Assistant administrators during this bootstrap stage. A later onboarding change can open the panel to household users after an administrator has been established, without risking a first-visit role takeover.

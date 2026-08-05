@@ -6,12 +6,22 @@ import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from .auth import (
+    AuthenticationRequiredError,
+    LastAdministratorError,
+    Principal,
+    Role,
+    ingress_identity,
+    list_users,
+    sync_user,
+    update_user_role,
+)
 from .discovery import SupervisorDiscovery
 from .integrations import IntegrationTester, integration_configs
 from .settings import (
@@ -24,7 +34,7 @@ from .web import INDEX_HTML
 
 DATABASE_FILE = APP_DATA / "mediahub.db"
 
-app = FastAPI(title="MediaHub", version="0.3.0-dev")
+app = FastAPI(title="MediaHub", version="0.4.0-dev")
 
 
 class MediaRequest(BaseModel):
@@ -58,6 +68,10 @@ SecretField = Literal[
 class IntegrationSettingsUpdate(BaseModel):
     updates: dict[IntegrationField, str] = Field(default_factory=dict)
     clear_secrets: list[SecretField] = Field(default_factory=list)
+
+
+class UserRoleUpdate(BaseModel):
+    role: Role
 
 
 def utc_now() -> str:
@@ -99,6 +113,20 @@ def initialise_database() -> None:
                 request_id INTEGER,
                 details_json TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'requester')),
+                active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_users_role_active
+            ON users (role, active);
             """
         )
 
@@ -120,6 +148,62 @@ def record_audit(
         """,
         (utc_now(), actor_id, actor_name, action, request_id, json.dumps(details)),
     )
+
+
+def current_user(
+    x_remote_user_id: str | None = Header(default=None, alias="X-Remote-User-Id"),
+    x_remote_user_name: str | None = Header(default=None, alias="X-Remote-User-Name"),
+    x_remote_user_display_name: str | None = Header(
+        default=None,
+        alias="X-Remote-User-Display-Name",
+    ),
+) -> Principal:
+    try:
+        identity = ingress_identity(
+            user_id=x_remote_user_id,
+            username=x_remote_user_name,
+            display_name=x_remote_user_display_name,
+        )
+    except AuthenticationRequiredError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+
+    with connect_db() as db:
+        principal, created = sync_user(db, identity=identity, now=utc_now())
+        if created:
+            record_audit(
+                db,
+                actor_id=principal.user_id,
+                actor_name=principal.display_name,
+                action="user_registered",
+                request_id=None,
+                details={"role": principal.role},
+            )
+        db.commit()
+
+    if not principal.active:
+        raise HTTPException(status_code=403, detail="This MediaHub user is inactive")
+    return principal
+
+
+CurrentUser = Annotated[Principal, Depends(current_user)]
+
+
+def administrator(principal: CurrentUser) -> Principal:
+    if principal.role != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access is required")
+    return principal
+
+
+Administrator = Annotated[Principal, Depends(administrator)]
+
+
+def manager_or_administrator(principal: CurrentUser) -> Principal:
+    if principal.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Manager access is required")
+    return principal
+
+
+Manager = Annotated[Principal, Depends(manager_or_administrator)]
 
 
 def current_reservations_gb(db: sqlite3.Connection) -> float:
@@ -179,13 +263,13 @@ def health() -> dict:
 
 
 @app.get("/api/storage")
-def get_storage() -> dict:
+def get_storage(_: Manager) -> dict:
     with connect_db() as db:
         return storage_snapshot(db, 0.001)
 
 
 @app.get("/api/integrations/status")
-async def integration_status() -> dict:
+async def integration_status(_: Manager) -> dict:
     tester = IntegrationTester()
     services = await tester.test_all(integration_configs(load_options()))
     return {
@@ -218,20 +302,19 @@ async def setup_payload() -> dict:
 
 
 @app.get("/api/setup")
-async def get_setup() -> dict:
+async def get_setup(_: Administrator) -> dict:
     return await setup_payload()
 
 
 @app.get("/api/setup/discovery")
-async def discover_integrations() -> dict:
+async def discover_integrations(_: Administrator) -> dict:
     return await SupervisorDiscovery().discover()
 
 
 @app.put("/api/setup/integrations")
 async def update_integration_settings(
     payload: IntegrationSettingsUpdate,
-    x_ingress_user_id: str | None = Header(default=None),
-    x_ingress_user_name: str | None = Header(default=None),
+    principal: Administrator,
 ) -> dict:
     if any(len(value) > 2048 for value in payload.updates.values()):
         raise HTTPException(
@@ -247,13 +330,11 @@ async def update_integration_settings(
     except (OSError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    actor_id = x_ingress_user_id or "local-development-user"
-    actor_name = x_ingress_user_name or "Local Development User"
     with connect_db() as db:
         record_audit(
             db,
-            actor_id=actor_id,
-            actor_name=actor_name,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
             action="integration_settings_updated",
             request_id=None,
             details={
@@ -269,11 +350,8 @@ async def update_integration_settings(
 @app.post("/api/requests")
 def create_request(
     payload: MediaRequest,
-    x_ingress_user_id: str | None = Header(default=None),
-    x_ingress_user_name: str | None = Header(default=None),
+    principal: CurrentUser,
 ) -> dict:
-    actor_id = x_ingress_user_id or "local-development-user"
-    actor_name = x_ingress_user_name or "Local Development User"
     options = load_options()
     auto_approve = bool(options.get("approvals", {}).get("auto_approve", True))
 
@@ -313,8 +391,8 @@ def create_request(
                 payload.media_type,
                 payload.title,
                 payload.external_id,
-                actor_id,
-                actor_name,
+                principal.user_id,
+                principal.display_name,
                 payload.estimated_size_gb,
                 storage["request_reservation_gb"] if status == "approved" else 0,
                 status,
@@ -327,8 +405,8 @@ def create_request(
 
         record_audit(
             db,
-            actor_id=actor_id,
-            actor_name=actor_name,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
             action="request_created",
             request_id=request_id,
             details={"payload": payload.model_dump(), "storage": storage, "status": status},
@@ -358,18 +436,71 @@ def create_request(
 
 
 @app.get("/api/requests")
-def list_requests() -> list[dict]:
+def get_requests(principal: CurrentUser) -> list[dict]:
     with connect_db() as db:
-        rows = db.execute(
-            "SELECT * FROM requests ORDER BY created_at DESC, id DESC"
-        ).fetchall()
+        if principal.role in {"admin", "manager"}:
+            rows = db.execute(
+                "SELECT * FROM requests ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """
+                SELECT * FROM requests
+                WHERE requested_by_id = ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (principal.user_id,),
+            ).fetchall()
         return [dict(row) for row in rows]
 
 
 @app.get("/api/audit")
-def list_audit_events() -> list[dict]:
+def list_audit_events(_: Administrator) -> list[dict]:
     with connect_db() as db:
         rows = db.execute(
             "SELECT * FROM audit_events ORDER BY occurred_at DESC, id DESC LIMIT 500"
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+@app.get("/api/users/me")
+def get_current_user(principal: CurrentUser) -> dict[str, str | bool]:
+    return principal.public_dict()
+
+
+@app.get("/api/users")
+def get_users(_: Administrator) -> list[dict[str, str | bool]]:
+    with connect_db() as db:
+        return list_users(db)
+
+
+@app.put("/api/users/{user_id}/role")
+def set_user_role(
+    user_id: str,
+    payload: UserRoleUpdate,
+    principal: Administrator,
+) -> dict[str, str | bool]:
+    with connect_db() as db:
+        try:
+            updated = update_user_role(
+                db,
+                user_id=user_id,
+                role=payload.role,
+                now=utc_now(),
+            )
+        except LastAdministratorError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        if updated is None:
+            raise HTTPException(status_code=404, detail="MediaHub user not found")
+
+        record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="user_role_updated",
+            request_id=None,
+            details={"user_id": updated.user_id, "role": updated.role},
+        )
+        db.commit()
+    return updated.public_dict()

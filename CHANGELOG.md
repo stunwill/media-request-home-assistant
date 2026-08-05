@@ -6,6 +6,10 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- Persistent MediaHub users linked to authenticated Home Assistant Ingress identities.
+- `admin`, `manager`, and `requester` roles with API authorization boundaries.
+- Administrator user-list and role-management endpoints with last-admin protection.
+- Role-scoped request history and current-user profile endpoints.
 - Automatic detection of installed Prowlarr, Radarr, Sonarr, and qBittorrent Home Assistant apps.
 - An Ingress-safe setup wizard with discovered URL suggestions, credential entry, and live connection status.
 - Private runtime integration settings with atomic writes, restrictive file permissions, and write-only secrets.
@@ -16,7 +20,10 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.3.0-dev`.
+- Development version advanced to `0.4.0-dev`.
+- Ingress identity handling now uses Home Assistant's documented `X-Remote-User-*` headers.
+- Setup, discovery, integration settings, audit, and user management require a MediaHub administrator.
+- Storage and integration status require a MediaHub manager or administrator.
 - The MediaHub panel is explicitly restricted to Home Assistant administrators during setup.
 
 ## [0.1.1-dev] - 2026-08-04

@@ -39,7 +39,20 @@ MediaHub provides a family-friendly Home Assistant Ingress interface for discove
 6. **SQLite persistence**
    - Requests
    - Append-only audit events
-   - Future users, roles, media cache, recommendations, and integration state
+   - Home Assistant-linked users and MediaHub roles
+   - Future media cache, recommendations, and integration state
+
+## Authentication and authorization
+
+Home Assistant Ingress is the authentication boundary. MediaHub requires the Supervisor-provided `X-Remote-User-Id` header and uses `X-Remote-User-Name` and `X-Remote-User-Display-Name` to keep the local user profile current. Client-supplied application credentials are not accepted.
+
+MediaHub persists three application roles:
+
+- `admin`: integration setup, audit access, user management, and all request operations
+- `manager`: operational status and all household request history
+- `requester`: request creation and access to the user's own request history
+
+The first authenticated user becomes the bootstrap administrator. The panel remains Home Assistant-admin-only during this stage, preventing a non-administrator from claiming the bootstrap role. All later users default to `requester`, and the last active MediaHub administrator cannot be demoted.
 
 ## Initial request lifecycle
 
