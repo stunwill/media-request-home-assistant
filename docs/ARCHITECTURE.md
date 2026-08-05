@@ -16,7 +16,7 @@ MediaHub provides a family-friendly Home Assistant Ingress interface for discove
    - Storage-space validation and reservation accounting
    - Duplicate detection
    - Audit events
-   - Future adapters for TMDb, Radarr, Sonarr, and qBittorrent
+   - Setup orchestration and credential-safe public settings
 
 3. **Integration boundary**
    - Typed configuration for TMDb, Prowlarr, Radarr, Sonarr, and qBittorrent
@@ -24,7 +24,19 @@ MediaHub provides a family-friendly Home Assistant Ingress interface for discove
    - Bounded timeouts and sanitised failure responses
    - No direct private-tracker access
 
-4. **SQLite persistence**
+4. **Home Assistant discovery**
+   - Authenticated Supervisor API access through `SUPERVISOR_TOKEN`
+   - Installed app matching by Supervisor slug and metadata
+   - Internal DNS names derived from the full app slug with underscores converted to hyphens
+   - Suggested URLs only, with no credential scraping from other apps
+
+5. **Private runtime settings**
+   - Home Assistant app options remain the base configuration
+   - Wizard settings are stored in `/data/mediahub-settings.json`
+   - Atomic replacement and owner-only `0600` permissions
+   - Secret values are write-only and never included in setup responses or audit details
+
+6. **SQLite persistence**
    - Requests
    - Append-only audit events
    - Future users, roles, media cache, recommendations, and integration state
@@ -71,6 +83,12 @@ Every request and administrative action creates an append-only event containing:
 - structured JSON details
 
 Credentials and secrets must never be recorded.
+
+## Setup security
+
+The MediaHub panel is restricted to Home Assistant administrators while Milestone 1 setup is being built. Home Assistant Ingress provides authentication, and the setup API is not published through a host port. Runtime configuration responses return only non-sensitive connection fields and booleans indicating whether each secret exists.
+
+Automatic discovery uses read-only Supervisor app metadata. It does not read another app's options and does not communicate directly with any private tracker. Prowlarr remains MediaHub's only indexer boundary.
 
 ## Smart recommendations roadmap
 

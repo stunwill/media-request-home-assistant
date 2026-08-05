@@ -47,7 +47,7 @@ class IntegrationTester:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
                 follow_redirects=True,
-                headers={"User-Agent": "MediaHub/0.2"},
+                headers={"User-Agent": "MediaHub/0.3"},
                 transport=self.transport,
             ) as client:
                 details = await self._test_service(client, config)
