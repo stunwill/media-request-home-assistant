@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import sqlite3
@@ -11,13 +12,19 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from app.integrations import IntegrationTester, integration_configs
+from .discovery import SupervisorDiscovery
+from .integrations import IntegrationTester, integration_configs
+from .settings import (
+    APP_DATA,
+    load_options,
+    public_integration_settings,
+    save_integration_settings,
+)
+from .web import INDEX_HTML
 
-APP_DATA = Path("/data")
-OPTIONS_FILE = Path("/data/options.json")
 DATABASE_FILE = APP_DATA / "mediahub.db"
 
-app = FastAPI(title="MediaHub", version="0.2.0-dev")
+app = FastAPI(title="MediaHub", version="0.3.0-dev")
 
 
 class MediaRequest(BaseModel):
@@ -27,22 +34,34 @@ class MediaRequest(BaseModel):
     estimated_size_gb: float = Field(gt=0, le=500)
 
 
+IntegrationField = Literal[
+    "tmdb_api_key",
+    "prowlarr_url",
+    "prowlarr_api_key",
+    "radarr_url",
+    "radarr_api_key",
+    "sonarr_url",
+    "sonarr_api_key",
+    "qbittorrent_url",
+    "qbittorrent_username",
+    "qbittorrent_password",
+]
+SecretField = Literal[
+    "tmdb_api_key",
+    "prowlarr_api_key",
+    "radarr_api_key",
+    "sonarr_api_key",
+    "qbittorrent_password",
+]
+
+
+class IntegrationSettingsUpdate(BaseModel):
+    updates: dict[IntegrationField, str] = Field(default_factory=dict)
+    clear_secrets: list[SecretField] = Field(default_factory=list)
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def load_options() -> dict:
-    if not OPTIONS_FILE.exists():
-        return {
-            "storage": {
-                "media_path": "/media",
-                "minimum_free_gb": 50,
-                "safety_margin_gb": 10,
-                "reservation_multiplier": 1.5,
-            },
-            "approvals": {"auto_approve": True},
-        }
-    return json.loads(OPTIONS_FILE.read_text(encoding="utf-8"))
 
 
 def connect_db() -> sqlite3.Connection:
@@ -151,74 +170,7 @@ def startup() -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    return """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MediaHub</title>
-  <style>
-    :root { color-scheme: light dark; font-family: Inter, system-ui, sans-serif; }
-    body { margin: 0; background: #111827; color: #f9fafb; }
-    main { max-width: 980px; margin: 0 auto; padding: 32px 20px; }
-    h1 { margin: 0 0 8px; font-size: 2rem; }
-    p { color: #cbd5e1; line-height: 1.55; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 24px; }
-    .card { background: #1f2937; border: 1px solid #374151; border-radius: 14px; padding: 18px; }
-    .label { color: #94a3b8; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
-    .value { margin-top: 8px; font-size: 1.15rem; font-weight: 700; }
-    .ok { color: #4ade80; }
-    .muted { color: #94a3b8; }
-    code { background: #0f172a; border-radius: 6px; padding: 2px 6px; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>MediaHub</h1>
-    <p>The MediaHub backend is running through Home Assistant Ingress. This is the initial foundation interface. Search, discovery, integrations and request management are being added next.</p>
-    <div class="grid">
-      <section class="card">
-        <div class="label">Service status</div>
-        <div class="value ok" id="service-status">Checking...</div>
-      </section>
-      <section class="card">
-        <div class="label">Version</div>
-        <div class="value" id="version">0.2.0-dev</div>
-      </section>
-      <section class="card">
-        <div class="label">Storage</div>
-        <div class="value" id="storage">Checking...</div>
-      </section>
-    </div>
-    <p class="muted">API endpoints are available relative to this page, including <code>api/health</code>, <code>api/storage</code>, <code>api/requests</code> and <code>api/audit</code>.</p>
-  </main>
-  <script>
-    async function loadStatus() {
-      try {
-        const health = await fetch('api/health').then(r => r.json());
-        document.getElementById('service-status').textContent = health.status === 'ok' ? 'Running' : 'Unavailable';
-        document.getElementById('version').textContent = health.version;
-      } catch (error) {
-        document.getElementById('service-status').textContent = 'Unavailable';
-      }
-
-      try {
-        const storage = await fetch('api/storage').then(async r => {
-          const body = await r.json();
-          if (!r.ok) throw new Error(body.detail || 'Storage unavailable');
-          return body;
-        });
-        document.getElementById('storage').textContent = `${storage.free_gb} GB free`;
-      } catch (error) {
-        document.getElementById('storage').textContent = 'Not configured';
-      }
-    }
-    loadStatus();
-  </script>
-</body>
-</html>
-"""
+    return INDEX_HTML
 
 
 @app.get("/api/health")
@@ -242,6 +194,76 @@ async def integration_status() -> dict:
         "configured": sum(service["configured"] for service in services),
         "total": len(services),
     }
+
+
+async def setup_payload() -> dict:
+    options = load_options()
+    tester = IntegrationTester()
+    discovery, services = await asyncio.gather(
+        SupervisorDiscovery().discover(),
+        tester.test_all(integration_configs(options)),
+    )
+    connections = {
+        "services": services,
+        "connected": sum(service["status"] == "connected" for service in services),
+        "configured": sum(service["configured"] for service in services),
+        "total": len(services),
+    }
+    return {
+        "version": app.version,
+        "settings": public_integration_settings(options),
+        "discovery": discovery,
+        "connections": connections,
+    }
+
+
+@app.get("/api/setup")
+async def get_setup() -> dict:
+    return await setup_payload()
+
+
+@app.get("/api/setup/discovery")
+async def discover_integrations() -> dict:
+    return await SupervisorDiscovery().discover()
+
+
+@app.put("/api/setup/integrations")
+async def update_integration_settings(
+    payload: IntegrationSettingsUpdate,
+    x_ingress_user_id: str | None = Header(default=None),
+    x_ingress_user_name: str | None = Header(default=None),
+) -> dict:
+    if any(len(value) > 2048 for value in payload.updates.values()):
+        raise HTTPException(
+            status_code=422,
+            detail="Integration values must be 2048 characters or fewer",
+        )
+
+    try:
+        save_integration_settings(
+            dict(payload.updates),
+            clear_secrets=payload.clear_secrets,
+        )
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    actor_id = x_ingress_user_id or "local-development-user"
+    actor_name = x_ingress_user_name or "Local Development User"
+    with connect_db() as db:
+        record_audit(
+            db,
+            actor_id=actor_id,
+            actor_name=actor_name,
+            action="integration_settings_updated",
+            request_id=None,
+            details={
+                "updated_fields": sorted(payload.updates),
+                "cleared_secret_fields": sorted(payload.clear_secrets),
+            },
+        )
+        db.commit()
+
+    return await setup_payload()
 
 
 @app.post("/api/requests")
