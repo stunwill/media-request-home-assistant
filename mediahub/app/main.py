@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from time import monotonic
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -24,6 +26,7 @@ from .auth import (
 )
 from .discovery import SupervisorDiscovery
 from .integrations import IntegrationTester, integration_configs
+from .media_services import MediaServiceError, configured_clients
 from .settings import (
     APP_DATA,
     load_options,
@@ -34,7 +37,7 @@ from .web import INDEX_HTML
 
 DATABASE_FILE = APP_DATA / "mediahub.db"
 
-app = FastAPI(title="MediaHub", version="0.4.0-dev")
+app = FastAPI(title="MediaHub", version="0.5.0-dev")
 
 
 class MediaRequest(BaseModel):
@@ -50,6 +53,8 @@ IntegrationField = Literal[
     "prowlarr_api_key",
     "radarr_url",
     "radarr_api_key",
+    "radarr_root_folder_path",
+    "radarr_quality_profile_id",
     "sonarr_url",
     "sonarr_api_key",
     "qbittorrent_url",
@@ -72,6 +77,20 @@ class IntegrationSettingsUpdate(BaseModel):
 
 class UserRoleUpdate(BaseModel):
     role: Role
+
+
+class ReleaseRules(BaseModel):
+    maximum_size_gb: float = Field(default=3, gt=0, le=100)
+    minimum_seeders: int = Field(default=1, ge=0, le=10000)
+    require_1080p: bool = True
+
+
+class MovieRequestCreate(ReleaseRules):
+    release_token: str | None = Field(default=None, min_length=16, max_length=200)
+
+
+RELEASE_CACHE_SECONDS = 25 * 60
+release_cache: dict[str, tuple[float, int, str, dict]] = {}
 
 
 def utc_now() -> str:
@@ -100,6 +119,12 @@ def initialise_database() -> None:
                 reserved_size_gb REAL NOT NULL,
                 status TEXT NOT NULL,
                 rejection_reason TEXT,
+                radarr_movie_id INTEGER,
+                selected_release_guid TEXT,
+                selected_release_title TEXT,
+                download_id TEXT,
+                progress REAL NOT NULL DEFAULT 0,
+                status_message TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -127,8 +152,25 @@ def initialise_database() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_users_role_active
             ON users (role, active);
+
+            CREATE INDEX IF NOT EXISTS idx_requests_external_status
+            ON requests (media_type, external_id, status);
             """
         )
+        existing_columns = {
+            str(row["name"]) for row in db.execute("PRAGMA table_info(requests)").fetchall()
+        }
+        migrations = {
+            "radarr_movie_id": "INTEGER",
+            "selected_release_guid": "TEXT",
+            "selected_release_title": "TEXT",
+            "download_id": "TEXT",
+            "progress": "REAL NOT NULL DEFAULT 0",
+            "status_message": "TEXT",
+        }
+        for name, definition in migrations.items():
+            if name not in existing_columns:
+                db.execute(f"ALTER TABLE requests ADD COLUMN {name} {definition}")
 
 
 def record_audit(
@@ -247,6 +289,74 @@ def storage_snapshot(db: sqlite3.Connection, estimated_size_gb: float) -> dict:
     }
 
 
+def service_http_error(error: MediaServiceError) -> HTTPException:
+    return HTTPException(status_code=error.status_code, detail=str(error))
+
+
+def release_with_policy(release: dict, rules: ReleaseRules) -> dict:
+    policy_rejections = list(release.get("rejections", []))
+    quality = str(release.get("quality", "")).lower()
+    size_gb = float(release.get("size_gb") or 0)
+    seeders = release.get("seeders")
+    if rules.require_1080p and "1080" not in quality:
+        policy_rejections.append("MediaHub requires a 1080p release")
+    if not size_gb or size_gb > rules.maximum_size_gb:
+        policy_rejections.append(
+            f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit"
+        )
+    if seeders is None or int(seeders) < rules.minimum_seeders:
+        policy_rejections.append(
+            f"Release has fewer than {rules.minimum_seeders} seeders"
+        )
+    if not release.get("download_allowed", True):
+        policy_rejections.append("Radarr does not allow this release to be downloaded")
+    result = dict(release)
+    result["policy_rejections"] = list(dict.fromkeys(policy_rejections))
+    result["eligible"] = bool(release.get("approved")) and not result["policy_rejections"]
+    result.pop("info_hash", None)
+    result.pop("guid", None)
+    return result
+
+
+def cache_release(tmdb_id: int, user_id: str, release: dict) -> str:
+    now = monotonic()
+    for token, (expires_at, _, _, _) in list(release_cache.items()):
+        if expires_at <= now:
+            release_cache.pop(token, None)
+    token = secrets.token_urlsafe(24)
+    release_cache[token] = (now + RELEASE_CACHE_SECONDS, tmdb_id, user_id, dict(release))
+    return token
+
+
+def cached_release(token: str, tmdb_id: int, user_id: str) -> dict:
+    cached = release_cache.pop(token, None)
+    if (
+        cached is None
+        or cached[0] <= monotonic()
+        or cached[1] != tmdb_id
+        or cached[2] != user_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="This release selection expired. Search for releases again.",
+        )
+    return cached[3]
+
+
+def request_row(db: sqlite3.Connection, request_id: int) -> dict:
+    row = db.execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Media request not found")
+    return dict(row)
+
+
+def public_request(item: dict) -> dict:
+    result = dict(item)
+    result.pop("selected_release_guid", None)
+    result.pop("download_id", None)
+    return result
+
+
 @app.on_event("startup")
 def startup() -> None:
     initialise_database()
@@ -345,6 +455,377 @@ async def update_integration_settings(
         db.commit()
 
     return await setup_payload()
+
+
+@app.get("/api/catalog/movies")
+async def movie_catalogue(
+    _: CurrentUser,
+    query: str = Query(default="", max_length=200),
+    page: int = Query(default=1, ge=1, le=500),
+    collection: Literal["popular", "top_rated", "now_playing", "upcoming"] = "popular",
+) -> dict:
+    tmdb, _, _ = configured_clients(load_options())
+    try:
+        return await tmdb.catalogue(query=query, page=page, collection=collection)
+    except MediaServiceError as error:
+        raise service_http_error(error) from error
+
+
+@app.get("/api/catalog/movies/{tmdb_id}")
+async def movie_details(tmdb_id: int, _: CurrentUser) -> dict:
+    tmdb, _, _ = configured_clients(load_options())
+    try:
+        return await tmdb.details(tmdb_id)
+    except MediaServiceError as error:
+        raise service_http_error(error) from error
+
+
+@app.get("/api/radarr/options")
+async def radarr_options(_: Administrator) -> dict:
+    _, radarr, _ = configured_clients(load_options())
+    try:
+        return await radarr.options()
+    except MediaServiceError as error:
+        raise service_http_error(error) from error
+
+
+async def search_movie_releases(
+    tmdb_id: int,
+    rules: ReleaseRules,
+    user_id: str,
+) -> tuple[dict, list[dict]]:
+    _, radarr, _ = configured_clients(load_options())
+    try:
+        radarr_movie = await radarr.ensure_movie(tmdb_id)
+        releases = await radarr.releases(int(radarr_movie["id"]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="Radarr returned an invalid movie response") from error
+    except MediaServiceError as error:
+        raise service_http_error(error) from error
+
+    public_releases = []
+    for release in releases:
+        public = release_with_policy(release, rules)
+        public["release_token"] = cache_release(tmdb_id, user_id, release)
+        public_releases.append(public)
+    return radarr_movie, public_releases
+
+
+@app.post("/api/movies/{tmdb_id}/releases")
+async def movie_releases(
+    tmdb_id: int,
+    rules: ReleaseRules,
+    principal: CurrentUser,
+) -> dict:
+    radarr_movie, releases = await search_movie_releases(tmdb_id, rules, principal.user_id)
+    with connect_db() as db:
+        record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="movie_releases_searched",
+            request_id=None,
+            details={"tmdb_id": tmdb_id, "result_count": len(releases)},
+        )
+        db.commit()
+    return {
+        "radarr_movie_id": int(radarr_movie["id"]),
+        "rules": rules.model_dump(),
+        "releases": releases,
+    }
+
+
+@app.post("/api/movies/{tmdb_id}/request")
+async def request_movie(
+    tmdb_id: int,
+    payload: MovieRequestCreate,
+    principal: CurrentUser,
+) -> dict:
+    tmdb, radarr, _ = configured_clients(load_options())
+    try:
+        movie = await tmdb.details(tmdb_id)
+    except MediaServiceError as error:
+        raise service_http_error(error) from error
+
+    with connect_db() as db:
+        duplicate = db.execute(
+            """
+            SELECT id, status FROM requests
+            WHERE media_type = 'movie' AND external_id = ?
+              AND status NOT IN ('rejected', 'cancelled', 'deleted', 'failed')
+            ORDER BY id DESC LIMIT 1
+            """,
+            (str(tmdb_id),),
+        ).fetchone()
+        if duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "This movie is already requested or available.", **dict(duplicate)},
+            )
+
+    selected: dict | None = None
+    if payload.release_token:
+        selected = cached_release(payload.release_token, tmdb_id, principal.user_id)
+        public_selected = release_with_policy(selected, payload)
+        if not public_selected["eligible"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "The selected release does not meet the download rules.",
+                    "rejections": public_selected["policy_rejections"],
+                },
+            )
+        try:
+            radarr_movie = await radarr.ensure_movie(tmdb_id)
+            # Refreshing the search also refreshes Radarr's short-lived release cache.
+            fresh_releases = await radarr.releases(int(radarr_movie["id"]))
+        except MediaServiceError as error:
+            raise service_http_error(error) from error
+        selected = next(
+            (
+                item
+                for item in fresh_releases
+                if item["guid"] == selected["guid"]
+                and item["indexer_id"] == selected["indexer_id"]
+            ),
+            None,
+        )
+        if selected is None:
+            raise HTTPException(
+                status_code=409,
+                detail="The selected release is no longer available. Search again.",
+            )
+        refreshed_selected = release_with_policy(selected, payload)
+        if not refreshed_selected["eligible"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "The selected release no longer meets the download rules.",
+                    "rejections": refreshed_selected["policy_rejections"],
+                },
+            )
+    else:
+        radarr_movie, releases = await search_movie_releases(
+            tmdb_id,
+            payload,
+            principal.user_id,
+        )
+        selected_public = next((item for item in releases if item["eligible"]), None)
+        if selected_public:
+            selected = cached_release(
+                selected_public["release_token"],
+                tmdb_id,
+                principal.user_id,
+            )
+
+    if selected is None:
+        raise HTTPException(
+            status_code=409,
+            detail="No release currently meets the 1080p, size, seeder, and Radarr rules.",
+        )
+
+    estimated_size_gb = max(float(selected["size_gb"]), 0.01)
+    with connect_db() as db:
+        storage = storage_snapshot(db, estimated_size_gb)
+        now = utc_now()
+        status = "searching" if storage["accepted"] else "rejected"
+        rejection_reason = None if storage["accepted"] else "insufficient_storage"
+        cursor = db.execute(
+            """
+            INSERT INTO requests (
+                media_type, title, external_id, requested_by_id, requested_by_name,
+                estimated_size_gb, reserved_size_gb, status, rejection_reason,
+                radarr_movie_id, selected_release_guid, selected_release_title,
+                download_id, progress, status_message, created_at, updated_at
+            ) VALUES ('movie', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+            """,
+            (
+                movie["title"],
+                str(tmdb_id),
+                principal.user_id,
+                principal.display_name,
+                estimated_size_gb,
+                storage["request_reservation_gb"] if storage["accepted"] else 0,
+                status,
+                rejection_reason,
+                int(radarr_movie["id"]),
+                selected["guid"],
+                selected["title"],
+                selected.get("info_hash") or None,
+                "Submitting release to Radarr" if storage["accepted"] else "Insufficient storage",
+                now,
+                now,
+            ),
+        )
+        request_id = int(cursor.lastrowid)
+        record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="movie_request_created",
+            request_id=request_id,
+            details={
+                "tmdb_id": tmdb_id,
+                "title": movie["title"],
+                "release": {
+                    "indexer": selected["indexer"],
+                    "title": selected["title"],
+                    "size_gb": selected["size_gb"],
+                    "quality": selected["quality"],
+                },
+                "storage": storage,
+            },
+        )
+        db.commit()
+
+    if not storage["accepted"]:
+        with connect_db() as db:
+            rejected_request = request_row(db, request_id)
+        return {"request": public_request(rejected_request), "storage": storage}
+
+    try:
+        grabbed = await radarr.grab(guid=selected["guid"], indexer_id=selected["indexer_id"])
+    except MediaServiceError as error:
+        with connect_db() as db:
+            db.execute(
+                "UPDATE requests SET status = 'failed', reserved_size_gb = 0, status_message = ?, updated_at = ? WHERE id = ?",
+                (str(error), utc_now(), request_id),
+            )
+            record_audit(
+                db,
+                actor_id="system",
+                actor_name="MediaHub",
+                action="movie_request_submission_failed",
+                request_id=request_id,
+                details={"message": str(error)},
+            )
+            db.commit()
+        raise service_http_error(error) from error
+
+    download_id = str(grabbed.get("infoHash") or selected.get("info_hash") or "") or None
+    with connect_db() as db:
+        db.execute(
+            """
+            UPDATE requests
+            SET status = 'queued', download_id = ?, status_message = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (download_id, "Release sent to Radarr", utc_now(), request_id),
+        )
+        record_audit(
+            db,
+            actor_id="system",
+            actor_name="MediaHub",
+            action="movie_release_grabbed",
+            request_id=request_id,
+            details={"indexer": selected["indexer"], "quality": selected["quality"]},
+        )
+        db.commit()
+        result = request_row(db, request_id)
+    return {
+        "request": public_request(result),
+        "release": release_with_policy(selected, payload),
+        "storage": storage,
+    }
+
+
+def _download_status(queue_item: dict, torrent: dict | None) -> tuple[str, float, str]:
+    if torrent:
+        progress = round(float(torrent.get("progress") or 0) * 100, 1)
+        state = str(torrent.get("state") or "")
+        if progress >= 100:
+            return "processing", progress, "Download complete, waiting for Radarr import"
+        return "downloading", progress, state or "Downloading"
+    size = float(queue_item.get("size") or 0)
+    size_left = float(queue_item.get("sizeleft") or queue_item.get("sizeLeft") or size)
+    progress = round(max(0, min(100, (1 - size_left / size) * 100)), 1) if size else 0
+    status = str(queue_item.get("status") or "queued").lower()
+    if status in {"downloading", "completed"} or progress > 0:
+        return "downloading", progress, str(queue_item.get("trackedDownloadStatus") or status)
+    return "queued", progress, status or "Queued"
+
+
+@app.get("/api/downloads")
+async def downloads(principal: CurrentUser) -> list[dict]:
+    _, radarr, qbittorrent = configured_clients(load_options())
+    queue_result, movies_result, torrents_result = await asyncio.gather(
+        radarr.queue(),
+        radarr.movies(),
+        qbittorrent.torrents(),
+        return_exceptions=True,
+    )
+    if isinstance(queue_result, Exception) or isinstance(movies_result, Exception):
+        error = queue_result if isinstance(queue_result, Exception) else movies_result
+        if isinstance(error, MediaServiceError):
+            raise service_http_error(error) from error
+        raise HTTPException(status_code=502, detail="Radarr status could not be loaded")
+
+    queue_by_movie = {
+        int(item.get("movieId") or 0): item
+        for item in queue_result
+        if isinstance(item, dict) and item.get("movieId")
+    }
+    library_by_movie = {
+        int(item.get("id") or 0): item
+        for item in movies_result
+        if isinstance(item, dict) and item.get("id")
+    }
+    torrents = [] if isinstance(torrents_result, Exception) else torrents_result
+    torrent_by_hash = {
+        str(item.get("hash") or "").lower(): item
+        for item in torrents
+        if isinstance(item, dict) and item.get("hash")
+    }
+
+    with connect_db() as db:
+        if principal.role in {"admin", "manager"}:
+            rows = db.execute(
+                "SELECT * FROM requests WHERE media_type = 'movie' ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """
+                SELECT * FROM requests
+                WHERE media_type = 'movie' AND requested_by_id = ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (principal.user_id,),
+            ).fetchall()
+
+        results = []
+        now = utc_now()
+        for row in rows:
+            item = dict(row)
+            radarr_movie_id = int(item.get("radarr_movie_id") or 0)
+            queue_item = queue_by_movie.get(radarr_movie_id)
+            library_movie = library_by_movie.get(radarr_movie_id)
+            if library_movie and library_movie.get("hasFile"):
+                status, progress, message = "available", 100.0, "Available in the media library"
+            elif queue_item:
+                download_id = str(queue_item.get("downloadId") or item.get("download_id") or "")
+                torrent = torrent_by_hash.get(download_id.lower())
+                status, progress, message = _download_status(queue_item, torrent)
+                item["download_id"] = download_id or item.get("download_id")
+            else:
+                status = item["status"]
+                progress = float(item.get("progress") or 0)
+                message = str(item.get("status_message") or status.replace("_", " ").title())
+
+            if status != item["status"] or progress != float(item.get("progress") or 0):
+                db.execute(
+                    """
+                    UPDATE requests
+                    SET status = ?, progress = ?, status_message = ?, download_id = ?,
+                        reserved_size_gb = CASE WHEN ? IN ('available', 'failed') THEN 0 ELSE reserved_size_gb END,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (status, progress, message, item.get("download_id"), status, now, item["id"]),
+                )
+            item.update({"status": status, "progress": progress, "status_message": message})
+            results.append(public_request(item))
+        db.commit()
+    return results
 
 
 @app.post("/api/requests")
@@ -451,7 +932,7 @@ def get_requests(principal: CurrentUser) -> list[dict]:
                 """,
                 (principal.user_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [public_request(dict(row)) for row in rows]
 
 
 @app.get("/api/audit")

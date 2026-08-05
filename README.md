@@ -2,22 +2,38 @@
 
 MediaHub is a Home Assistant add-on for searching, requesting, tracking, and managing movies and TV shows through a family-friendly interface.
 
-## Planned capabilities
+## Current capabilities
 
 - Home Assistant Ingress access
 - Per-user request history and roles
 - Automatic request approval
-- Movie and TV discovery
-- Search by title, genre, year, rating, and cast
-- Radarr and Sonarr integration
-- qBittorrent download status
+- TMDb movie discovery, search, posters, details, cast, ratings, and trailers
+- Automatic movie requests using 1080p, maximum-size, minimum-seeder, and Radarr acceptance rules
+- Interactive release selection with IPTorrents results supplied through Prowlarr and Radarr
+- Radarr movie creation, interactive search, and release submission
+- Radarr and qBittorrent download and library status
 - Storage-space protection and automatic rejection
 - Append-only audit trail
 - Smart recommendations
 
 ## Project status
 
-MediaHub is in early development. The first release will establish the Home Assistant add-on structure, backend service, frontend shell, configuration model, storage safeguards, and auditing foundation.
+MediaHub is in active early development. Version `0.5.0-dev` delivers the first complete movie workflow. Television discovery and Sonarr submission remain planned.
+
+## Movie request workflow
+
+1. Browse popular, now-playing, top-rated, or upcoming movies from TMDb, or search by title.
+2. Open a movie to view its synopsis, rating, cast, runtime, and trailer.
+3. Choose **Request best release** for automatic selection, or **Choose a release** to inspect live indexer results.
+4. MediaHub adds the title to Radarr with automatic search disabled.
+5. Radarr performs an interactive search through Prowlarr. Prowlarr handles IPTorrents authentication.
+6. MediaHub applies the selected 1080p, size, seeder, storage, and Radarr acceptance rules.
+7. Radarr sends the approved release to qBittorrent and imports it when complete.
+8. MediaHub displays queued, downloading, processing, failed, and available status.
+
+IPTorrents credentials, cookies, passkeys, and download URLs are never stored by MediaHub or returned to the browser. Configure the IPTorrents indexer directly in Prowlarr.
+
+Movie metadata and imagery are provided by TMDb. MediaHub includes the required TMDb attribution and is not endorsed or certified by TMDb.
 
 ## Integration connection checks
 
@@ -38,3 +54,7 @@ MediaHub trusts Home Assistant Ingress for authentication and links each request
 The first authenticated MediaHub user is assigned the `admin` role. Later users start as `requester` until a MediaHub administrator changes their role. Administrators can manage integrations, audit history, and roles. Managers can view household requests and operational status. Requesters can create requests and view only their own request history.
 
 The Home Assistant sidebar panel remains restricted to Home Assistant administrators during this bootstrap stage. A later onboarding change can open the panel to household users after an administrator has been established, without risking a first-visit role takeover.
+
+## Radarr request settings
+
+After Radarr connects, choose its movie root folder and quality profile on the Setup screen. Leaving either value on **Automatic** uses Radarr's first available option. MediaHub adds a movie without immediately searching, which allows the release rules and manual picker to run before any download starts.
