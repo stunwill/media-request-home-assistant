@@ -19,6 +19,8 @@ INTEGRATION_FIELDS = {
     "prowlarr_api_key",
     "radarr_url",
     "radarr_api_key",
+    "radarr_root_folder_path",
+    "radarr_quality_profile_id",
     "sonarr_url",
     "sonarr_api_key",
     "qbittorrent_url",
@@ -119,6 +121,14 @@ def save_integration_settings(
     for field, value in updates.items():
         if field in URL_FIELDS:
             integrations[field] = normalise_service_url(value)
+        elif field == "radarr_quality_profile_id":
+            try:
+                profile_id = int(value or 0)
+            except (TypeError, ValueError) as error:
+                raise ValueError("Radarr quality profile must be a valid ID") from error
+            if profile_id < 0:
+                raise ValueError("Radarr quality profile must be a valid ID")
+            integrations[field] = profile_id
         elif field in SECRET_FIELDS and not value:
             continue
         else:
@@ -181,6 +191,8 @@ def public_integration_settings(options: dict[str, Any]) -> dict[str, dict[str, 
         "radarr": {
             "url": _public_url(values.get("radarr_url", "")),
             "api_key_set": bool(str(values.get("radarr_api_key", "")).strip()),
+            "root_folder_path": str(values.get("radarr_root_folder_path", "")),
+            "quality_profile_id": int(values.get("radarr_quality_profile_id") or 0),
         },
         "sonarr": {
             "url": _public_url(values.get("sonarr_url", "")),

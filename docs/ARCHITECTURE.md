@@ -24,19 +24,27 @@ MediaHub provides a family-friendly Home Assistant Ingress interface for discove
    - Bounded timeouts and sanitised failure responses
    - No direct private-tracker access
 
-4. **Home Assistant discovery**
+4. **Movie discovery and request orchestration**
+   - TMDb provides catalogue metadata, posters, search, cast, ratings, and trailers
+   - Radarr owns movie records, interactive release search, release grabbing, and import state
+   - Prowlarr owns IPTorrents authentication and translates private-indexer results for Radarr
+   - qBittorrent provides torrent progress only; MediaHub does not submit tracker downloads directly
+   - Browser-visible release data excludes GUIDs, download URLs, info hashes, cookies, and passkeys
+   - Short-lived random release tokens are bound to the requesting Home Assistant user
+
+5. **Home Assistant discovery**
    - Authenticated Supervisor API access through `SUPERVISOR_TOKEN`
    - Installed app matching by Supervisor slug and metadata
    - Internal DNS names derived from the full app slug with underscores converted to hyphens
    - Suggested URLs only, with no credential scraping from other apps
 
-5. **Private runtime settings**
+6. **Private runtime settings**
    - Home Assistant app options remain the base configuration
    - Wizard settings are stored in `/data/mediahub-settings.json`
    - Atomic replacement and owner-only `0600` permissions
    - Secret values are write-only and never included in setup responses or audit details
 
-6. **SQLite persistence**
+7. **SQLite persistence**
    - Requests
    - Append-only audit events
    - Home Assistant-linked users and MediaHub roles
@@ -67,6 +75,33 @@ requested
 ```
 
 Requests may also transition to rejected, failed, cancelled, or deleted.
+
+## Movie request sequence
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant M as MediaHub
+    participant T as TMDb
+    participant R as Radarr
+    participant P as Prowlarr
+    participant Q as qBittorrent
+    U->>M: Browse or search
+    M->>T: Fetch movie metadata
+    U->>M: Automatic request or release search
+    M->>R: Add movie, search disabled
+    M->>R: Interactive release search
+    R->>P: Search configured indexers
+    P-->>R: IPTorrents releases
+    R-->>M: Releases and rejection reasons
+    M->>M: Apply quality, size, seeder, and storage rules
+    M->>R: Grab selected release
+    R->>Q: Submit torrent
+    M->>R: Poll queue and library state
+    M->>Q: Poll download progress
+```
+
+MediaHub deliberately does not scrape or authenticate to IPTorrents. Private tracker credentials remain in Prowlarr. Radarr release GUIDs may contain tracker-specific data, so MediaHub replaces them with random, user-bound tokens before sending release results to the browser. Tokens expire after 25 minutes and are consumed when selected.
 
 ## Storage protection
 

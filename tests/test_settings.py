@@ -102,6 +102,14 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must not be embedded"):
             normalise_service_url("http://user:password@radarr:7878")
 
+    def test_radarr_quality_profile_must_be_a_valid_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "valid ID"):
+                save_integration_settings(
+                    {"radarr_quality_profile_id": "not-an-id"},
+                    settings_file=Path(directory) / "settings.json",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

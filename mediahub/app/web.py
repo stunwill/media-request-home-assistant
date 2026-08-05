@@ -1,312 +1,119 @@
 from __future__ import annotations
 
 
-INDEX_HTML = """
+INDEX_HTML = r"""
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b1020">
-  <title>MediaHub Setup</title>
+  <meta name="theme-color" content="#080a0f">
+  <title>MediaHub</title>
   <style>
     :root {
-      color-scheme: dark;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --bg: #080b14;
-      --surface: rgba(24, 30, 48, .86);
-      --surface-strong: #1b2236;
-      --border: rgba(148, 163, 184, .18);
-      --text: #f8fafc;
-      --muted: #9aa7bd;
-      --accent: #8b5cf6;
-      --accent-2: #5b8cff;
-      --success: #37d487;
-      --warning: #f7bd4a;
-      --danger: #fb7185;
+      color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg:#080a0f; --surface:#121620; --surface-2:#1a202d; --border:rgba(255,255,255,.1);
+      --text:#f7f8fb; --muted:#9ba6b7; --accent:#7c5cff; --accent-2:#4e8dff;
+      --success:#3ad68c; --warning:#ffc65a; --danger:#ff7389;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at 15% -5%, rgba(91, 140, 255, .22), transparent 34rem),
-        radial-gradient(circle at 100% 10%, rgba(139, 92, 246, .18), transparent 30rem),
-        var(--bg);
-      color: var(--text);
-    }
-    button, input { font: inherit; }
-    button { cursor: pointer; }
-    .shell { max-width: 1160px; margin: 0 auto; padding: 26px 20px 64px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: -.02em; }
-    .mark {
-      display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px;
-      background: linear-gradient(135deg, var(--accent-2), var(--accent));
-      box-shadow: 0 12px 36px rgba(91, 140, 255, .28);
-    }
-    .version { color: var(--muted); font-size: .82rem; }
-    .hero { padding: 56px 0 28px; max-width: 760px; }
-    .eyebrow { color: #a78bfa; text-transform: uppercase; letter-spacing: .15em; font-size: .75rem; font-weight: 800; }
-    h1 { margin: 12px 0; font-size: clamp(2.15rem, 6vw, 4.4rem); line-height: 1; letter-spacing: -.055em; }
-    .hero p { margin: 0; color: var(--muted); font-size: 1.06rem; line-height: 1.65; }
-    .summary {
-      display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 14px; margin: 22px 0 30px;
-    }
-    .summary-card, .service-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, .2); backdrop-filter: blur(16px);
-    }
-    .summary-card { padding: 20px; }
-    .summary-card .label { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; }
-    .summary-card .value { margin-top: 8px; font-weight: 800; font-size: 1.18rem; }
-    .progress { height: 7px; background: #101525; border-radius: 99px; overflow: hidden; margin-top: 14px; }
-    .progress > span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .3s ease; }
-    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin: 28px 0 16px; }
-    h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.025em; }
-    .section-heading p { margin: 5px 0 0; color: var(--muted); font-size: .9rem; }
-    .button {
-      border: 1px solid var(--border); color: var(--text); background: #20283e; border-radius: 12px;
-      padding: 10px 15px; font-weight: 750; transition: transform .15s ease, background .15s ease;
-    }
-    .button:hover { transform: translateY(-1px); background: #29334f; }
-    .button:disabled { cursor: wait; opacity: .62; transform: none; }
-    .button.primary { border: 0; background: linear-gradient(135deg, var(--accent-2), var(--accent)); padding: 12px 18px; }
-    .services { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .service-card { padding: 20px; }
-    .service-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 17px; }
-    .service-name { display: flex; align-items: center; gap: 11px; font-size: 1rem; font-weight: 800; }
-    .service-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #252e48; color: #b8c6df; }
-    .badge { border-radius: 99px; padding: 5px 9px; font-size: .72rem; font-weight: 800; background: #242c42; color: var(--muted); }
-    .badge.connected { background: rgba(55, 212, 135, .12); color: var(--success); }
-    .badge.detected { background: rgba(91, 140, 255, .14); color: #8db0ff; }
-    .badge.warning { background: rgba(247, 189, 74, .13); color: var(--warning); }
-    .badge.error { background: rgba(251, 113, 133, .13); color: var(--danger); }
-    .fields { display: grid; gap: 13px; }
-    label { display: grid; gap: 7px; color: #c4cede; font-size: .79rem; font-weight: 700; }
-    input {
-      width: 100%; border: 1px solid var(--border); background: #0e1424; color: var(--text);
-      border-radius: 11px; padding: 11px 12px; outline: none;
-    }
-    input:focus { border-color: rgba(139, 92, 246, .8); box-shadow: 0 0 0 3px rgba(139, 92, 246, .13); }
-    input::placeholder { color: #626f87; }
-    .hint { color: var(--muted); font-size: .74rem; line-height: 1.45; min-height: 1.1em; }
-    .footer-actions {
-      position: sticky; bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 16px;
-      margin-top: 22px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 17px;
-      background: rgba(17, 22, 36, .94); box-shadow: 0 18px 55px rgba(0,0,0,.38); backdrop-filter: blur(18px);
-    }
-    .message { color: var(--muted); font-size: .86rem; }
-    .message.success { color: var(--success); }
-    .message.error { color: var(--danger); }
-    @media (max-width: 760px) {
-      .shell { padding: 20px 14px 42px; }
-      .hero { padding-top: 42px; }
-      .summary { grid-template-columns: 1fr 1fr; }
-      .summary-card:first-child { grid-column: 1 / -1; }
-      .services { grid-template-columns: 1fr; }
-      .section-heading { align-items: flex-start; flex-direction: column; }
-      .footer-actions { align-items: stretch; flex-direction: column; }
-      .footer-actions .button { width: 100%; }
-    }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);min-height:100vh} button,input,select{font:inherit}
+    button{cursor:pointer}.hidden{display:none!important}.muted{color:var(--muted)}
+    .topbar{position:sticky;top:0;z-index:20;height:68px;padding:0 clamp(16px,4vw,54px);display:flex;align-items:center;gap:26px;background:rgba(8,10,15,.88);backdrop-filter:blur(18px);border-bottom:1px solid var(--border)}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:1.12rem}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,var(--accent-2),var(--accent));box-shadow:0 10px 28px rgba(78,141,255,.25)}
+    nav{display:flex;gap:4px}nav button{border:0;background:transparent;color:var(--muted);padding:9px 13px;border-radius:10px;font-weight:750}nav button.active,nav button:hover{color:var(--text);background:rgba(255,255,255,.07)}
+    .user{margin-left:auto;color:var(--muted);font-size:.84rem}.shell{max-width:1500px;margin:auto;padding:28px clamp(16px,4vw,54px) 70px}
+    .hero{min-height:270px;border-radius:26px;padding:clamp(26px,5vw,62px);display:flex;align-items:end;position:relative;overflow:hidden;background:radial-gradient(circle at 80% 20%,rgba(124,92,255,.3),transparent 34rem),linear-gradient(135deg,#151b2b,#0d1018);border:1px solid var(--border)}
+    .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,7,11,.3),transparent)}.hero-copy{position:relative;z-index:1;max-width:720px}.eyebrow{color:#ae9cff;text-transform:uppercase;letter-spacing:.14em;font-size:.74rem;font-weight:900}
+    h1{font-size:clamp(2.3rem,6vw,5rem);line-height:.95;letter-spacing:-.055em;margin:10px 0 16px}.hero p{color:#c1c8d4;line-height:1.6;margin:0;max-width:620px}
+    .searchbar{display:flex;gap:10px;margin:24px 0}.searchbar input,.field input,.field select{width:100%;border:1px solid var(--border);background:#0d1119;color:var(--text);border-radius:12px;padding:12px 14px;outline:none}.searchbar input:focus,.field input:focus,.field select:focus{border-color:var(--accent)}
+    .button{border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:12px;padding:11px 16px;font-weight:800}.button:hover{filter:brightness(1.12)}.button.primary{border:0;background:linear-gradient(135deg,var(--accent-2),var(--accent))}.button.danger{background:rgba(255,115,137,.13);color:var(--danger)}.button:disabled{opacity:.5;cursor:wait}
+    .filters{display:flex;gap:8px;overflow:auto;margin-bottom:24px}.chip{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:999px;padding:8px 13px;white-space:nowrap}.chip.active{background:#252b3a;color:white;border-color:#3c455a}
+    .heading{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:28px 0 16px}.heading h2{margin:0;font-size:1.5rem;letter-spacing:-.03em}.heading p{margin:5px 0 0;color:var(--muted)}
+    .movies{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:20px}.movie{border:0;background:transparent;color:inherit;padding:0;text-align:left;min-width:0}.poster{aspect-ratio:2/3;border-radius:15px;overflow:hidden;background:linear-gradient(145deg,#20283a,#10141e);border:1px solid var(--border);box-shadow:0 15px 35px rgba(0,0,0,.28);transition:transform .18s ease,box-shadow .18s ease}.movie:hover .poster{transform:translateY(-4px) scale(1.01);box-shadow:0 22px 48px rgba(0,0,0,.4)}.poster img{width:100%;height:100%;object-fit:cover}.no-poster{height:100%;display:grid;place-items:center;color:var(--muted);padding:20px;text-align:center;font-weight:800}.movie-title{font-weight:800;margin-top:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.movie-meta{color:var(--muted);font-size:.8rem;margin-top:4px}
+    .empty{padding:52px 20px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:18px}.panel{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:20px}.downloads{display:grid;gap:12px}.download{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}.download h3{margin:0 0 6px;font-size:1rem}.progress{height:7px;background:#080b11;border-radius:99px;overflow:hidden;margin-top:10px}.progress span{display:block;height:100%;background:linear-gradient(90deg,var(--accent-2),var(--accent));border-radius:inherit}.status{font-size:.72rem;font-weight:900;padding:5px 9px;border-radius:99px;background:rgba(78,141,255,.12);color:#85afff}.status.available{color:var(--success);background:rgba(58,214,140,.12)}.status.failed,.status.rejected{color:var(--danger);background:rgba(255,115,137,.12)}
+    .setup-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.service{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px}.service-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:14px;font-weight:900}.fields{display:grid;gap:11px}.field{display:grid;gap:6px;color:#c8d0dd;font-size:.78rem;font-weight:750}.hint{font-size:.75rem;color:var(--muted);line-height:1.45}.badge{font-size:.7rem;padding:5px 8px;border-radius:99px;color:var(--muted);background:#252b38}.badge.connected{color:var(--success);background:rgba(58,214,140,.12)}.setup-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px}.message{color:var(--muted);font-size:.86rem}.message.error{color:var(--danger)}.message.success{color:var(--success)}
+    .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:18px}.dialog{position:relative;width:min(960px,100%);max-height:92vh;overflow:auto;background:#111620;border:1px solid var(--border);border-radius:24px;box-shadow:0 30px 90px rgba(0,0,0,.65)}.close{position:absolute;right:14px;top:14px;z-index:3;width:38px;height:38px;border:1px solid var(--border);border-radius:50%;background:rgba(8,10,15,.75);color:white}.detail-hero{min-height:340px;padding:34px;display:flex;align-items:end;background-size:cover;background-position:center;position:relative}.detail-hero:before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#111620 2%,rgba(17,22,32,.32) 70%),linear-gradient(90deg,rgba(17,22,32,.88),transparent)}.detail-copy{position:relative;max-width:670px}.detail-copy h2{font-size:clamp(2rem,6vw,4rem);line-height:1;margin:8px 0 14px;letter-spacing:-.04em}.detail-body{padding:0 34px 34px}.actions{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}.release-rules{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.releases{display:grid;gap:10px}.release{display:grid;grid-template-columns:1fr auto;gap:14px;padding:14px;border:1px solid var(--border);border-radius:14px;background:#0c1018}.release h4{margin:0 0 7px;overflow-wrap:anywhere}.release-meta{color:var(--muted);font-size:.8rem;display:flex;gap:10px;flex-wrap:wrap}.release-reasons{color:var(--danger);font-size:.77rem;margin-top:8px}.toast{position:fixed;right:20px;bottom:20px;z-index:80;max-width:390px;padding:14px 17px;border-radius:14px;background:#202738;border:1px solid var(--border);box-shadow:0 20px 55px rgba(0,0,0,.45)}
+    .attribution{margin-top:32px;color:#697487;font-size:.72rem;text-align:center}
+    @media(max-width:760px){.topbar{gap:10px;height:auto;min-height:62px;flex-wrap:wrap;padding-block:10px}.user{display:none}.shell{padding-top:18px}.hero{min-height:230px}.setup-grid{grid-template-columns:1fr}.movies{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.release-rules{grid-template-columns:1fr}.detail-hero{min-height:290px;padding:24px}.detail-body{padding:0 20px 24px}.setup-actions{align-items:stretch;flex-direction:column}.setup-actions .button{width:100%}}
   </style>
 </head>
 <body>
+  <header class="topbar">
+    <div class="brand"><span class="mark">▶</span>MediaHub</div>
+    <nav aria-label="Main navigation">
+      <button class="active" data-view="browse">Browse</button>
+      <button data-view="downloads">Downloads</button>
+      <button data-view="setup" id="setup-nav">Setup</button>
+    </nav>
+    <div class="user" id="user">Connecting...</div>
+  </header>
+
   <main class="shell">
-    <header class="topbar">
-      <div class="brand"><span class="mark">▶</span><span>MediaHub</span></div>
-      <span class="version" id="version">0.4.0-dev</span>
-    </header>
-
-    <section class="hero">
-      <div class="eyebrow">Milestone 1 setup</div>
-      <h1>Connect your media stack.</h1>
-      <p>MediaHub discovers compatible Home Assistant apps, then validates each connection without exposing credentials to the browser.</p>
-    </section>
-
-    <section class="summary" aria-label="Setup summary">
-      <article class="summary-card">
-        <div class="label">Setup progress</div>
-        <div class="value" id="progress-text">Checking services...</div>
-        <div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
-      </article>
-      <article class="summary-card">
-        <div class="label">Apps detected</div>
-        <div class="value" id="detected-count">Checking...</div>
-      </article>
-      <article class="summary-card">
-        <div class="label">Connections</div>
-        <div class="value" id="connected-count">Checking...</div>
-      </article>
-    </section>
-
-    <div class="section-heading">
-      <div><h2>Service connections</h2><p>Detected addresses are suggested automatically. Add each service's credentials to complete setup.</p></div>
-      <button class="button" id="discover-button" type="button">Discover again</button>
-    </div>
-
-    <form id="setup-form">
-      <section class="services">
-        <article class="service-card" data-service="tmdb">
-          <div class="service-head"><div class="service-name"><span class="service-icon">TM</span>TMDb</div><span class="badge" data-status>Checking</span></div>
-          <div class="fields">
-            <label>API key<input id="tmdb_api_key" type="password" autocomplete="new-password" placeholder="Enter TMDb API key"></label>
-            <div class="hint" data-hint>Required for posters, metadata and discovery.</div>
-          </div>
-        </article>
-
-        <article class="service-card" data-service="prowlarr">
-          <div class="service-head"><div class="service-name"><span class="service-icon">PR</span>Prowlarr</div><span class="badge" data-status>Checking</span></div>
-          <div class="fields">
-            <label>Service URL<input id="prowlarr_url" type="url" inputmode="url" placeholder="http://addon-hostname:9696"></label>
-            <label>API key<input id="prowlarr_api_key" type="password" autocomplete="new-password" placeholder="Enter Prowlarr API key"></label>
-            <div class="hint" data-hint>MediaHub searches indexers only through Prowlarr.</div>
-          </div>
-        </article>
-
-        <article class="service-card" data-service="radarr">
-          <div class="service-head"><div class="service-name"><span class="service-icon">RA</span>Radarr</div><span class="badge" data-status>Checking</span></div>
-          <div class="fields">
-            <label>Service URL<input id="radarr_url" type="url" inputmode="url" placeholder="http://addon-hostname:7878"></label>
-            <label>API key<input id="radarr_api_key" type="password" autocomplete="new-password" placeholder="Enter Radarr API key"></label>
-            <div class="hint" data-hint>Handles movie requests and library imports.</div>
-          </div>
-        </article>
-
-        <article class="service-card" data-service="sonarr">
-          <div class="service-head"><div class="service-name"><span class="service-icon">SO</span>Sonarr</div><span class="badge" data-status>Checking</span></div>
-          <div class="fields">
-            <label>Service URL<input id="sonarr_url" type="url" inputmode="url" placeholder="http://addon-hostname:8989"></label>
-            <label>API key<input id="sonarr_api_key" type="password" autocomplete="new-password" placeholder="Enter Sonarr API key"></label>
-            <div class="hint" data-hint>Handles television requests and episode monitoring.</div>
-          </div>
-        </article>
-
-        <article class="service-card" data-service="qbittorrent">
-          <div class="service-head"><div class="service-name"><span class="service-icon">QB</span>qBittorrent</div><span class="badge" data-status>Checking</span></div>
-          <div class="fields">
-            <label>Service URL<input id="qbittorrent_url" type="url" inputmode="url" placeholder="http://addon-hostname:8080"></label>
-            <label>Username<input id="qbittorrent_username" autocomplete="username" placeholder="qBittorrent username"></label>
-            <label>Password<input id="qbittorrent_password" type="password" autocomplete="new-password" placeholder="Enter qBittorrent password"></label>
-            <div class="hint" data-hint>Reports download progress and manages MediaHub transfers.</div>
-          </div>
-        </article>
-      </section>
-
-      <div class="footer-actions">
-        <div class="message" id="message" role="status">Credentials are stored only in MediaHub's private data directory.</div>
-        <button class="button primary" id="save-button" type="submit">Save and test connections</button>
+    <section id="browse-view">
+      <div class="hero"><div class="hero-copy"><div class="eyebrow">Your private media catalogue</div><h1>Find something worth watching.</h1><p>Browse movie metadata from TMDb, then request an approved IPTorrents release through Radarr and Prowlarr.</p></div></div>
+      <form class="searchbar" id="search-form"><input id="search" type="search" maxlength="200" placeholder="Search movies, actors or titles" aria-label="Search movies"><button class="button primary">Search</button></form>
+      <div class="filters" id="filters">
+        <button class="chip active" data-collection="popular">Popular</button><button class="chip" data-collection="now_playing">Now playing</button><button class="chip" data-collection="top_rated">Top rated</button><button class="chip" data-collection="upcoming">Upcoming</button>
       </div>
-    </form>
+      <div class="heading"><div><h2 id="catalogue-title">Popular movies</h2><p id="catalogue-meta">Loading TMDb...</p></div></div>
+      <div class="movies" id="movies"></div>
+      <p class="attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    </section>
+
+    <section id="downloads-view" class="hidden">
+      <div class="heading"><div><h2>Requests and downloads</h2><p>Live status from Radarr and qBittorrent.</p></div><button class="button" id="refresh-downloads">Refresh</button></div>
+      <div class="downloads" id="downloads"></div>
+    </section>
+
+    <section id="setup-view" class="hidden">
+      <div class="heading"><div><h2>Service connections</h2><p>Credentials remain private inside MediaHub. IPTorrents authentication stays in Prowlarr.</p></div><button class="button" id="discover">Discover again</button></div>
+      <form id="setup-form"><div class="setup-grid">
+        <article class="service" data-service="tmdb"><div class="service-head"><span>TMDb</span><span class="badge" data-status>Checking</span></div><div class="fields"><label class="field">API key<input id="tmdb_api_key" type="password" autocomplete="new-password" placeholder="TMDb API key"></label><div class="hint">Posters, metadata, discovery and search.</div></div></article>
+        <article class="service" data-service="prowlarr"><div class="service-head"><span>Prowlarr</span><span class="badge" data-status>Checking</span></div><div class="fields"><label class="field">URL<input id="prowlarr_url" type="url"></label><label class="field">API key<input id="prowlarr_api_key" type="password" autocomplete="new-password"></label><div class="hint">Authenticated IPTorrents searches are performed by Prowlarr.</div></div></article>
+        <article class="service" data-service="radarr"><div class="service-head"><span>Radarr</span><span class="badge" data-status>Checking</span></div><div class="fields"><label class="field">URL<input id="radarr_url" type="url"></label><label class="field">API key<input id="radarr_api_key" type="password" autocomplete="new-password"></label><label class="field">Movie root folder<select id="radarr_root_folder_path"><option value="">Automatic</option></select></label><label class="field">Quality profile<select id="radarr_quality_profile_id"><option value="0">Automatic</option></select></label><div class="hint">Adds movies, performs interactive searches and grabs approved releases.</div></div></article>
+        <article class="service" data-service="sonarr"><div class="service-head"><span>Sonarr</span><span class="badge" data-status>Checking</span></div><div class="fields"><label class="field">URL<input id="sonarr_url" type="url"></label><label class="field">API key<input id="sonarr_api_key" type="password" autocomplete="new-password"></label><div class="hint">Television support follows in the next workflow slice.</div></div></article>
+        <article class="service" data-service="qbittorrent"><div class="service-head"><span>qBittorrent</span><span class="badge" data-status>Checking</span></div><div class="fields"><label class="field">URL<input id="qbittorrent_url" type="url"></label><label class="field">Username<input id="qbittorrent_username" autocomplete="username"></label><label class="field">Password<input id="qbittorrent_password" type="password" autocomplete="new-password"></label><div class="hint">Live torrent progress. Radarr remains responsible for submitting downloads.</div></div></article>
+      </div><div class="setup-actions"><div class="message" id="setup-message">Loading setup...</div><button class="button primary" id="save-setup">Save and test</button></div></form>
+    </section>
   </main>
 
+  <div class="modal hidden" id="modal" role="dialog" aria-modal="true" aria-labelledby="detail-title"><div class="dialog"><button class="close" id="close-modal" aria-label="Close">✕</button><div id="detail"></div></div></div>
+  <div class="toast hidden" id="toast" role="status"></div>
+
   <script>
-    const services = ['tmdb', 'prowlarr', 'radarr', 'sonarr', 'qbittorrent'];
-    const secretFields = ['tmdb_api_key', 'prowlarr_api_key', 'radarr_api_key', 'sonarr_api_key', 'qbittorrent_password'];
-    let latest = null;
+    const state={user:null,collection:'popular',query:'',movie:null};
+    const secretFields=['tmdb_api_key','prowlarr_api_key','radarr_api_key','sonarr_api_key','qbittorrent_password'];
+    const serviceNames=['tmdb','prowlarr','radarr','sonarr','qbittorrent'];
+    const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    const endpoint=path=>`api/${path}`;
+    async function api(path,options={}){const response=await fetch(endpoint(path),options);const body=await response.json().catch(()=>({}));if(!response.ok){const detail=body.detail;throw new Error(typeof detail==='string'?detail:detail?.message||'Request failed');}return body;}
+    function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),5000);}
+    function showView(name){document.querySelectorAll('nav button').forEach(button=>button.classList.toggle('active',button.dataset.view===name));['browse','downloads','setup'].forEach(view=>document.getElementById(`${view}-view`).classList.toggle('hidden',view!==name));if(name==='downloads')loadDownloads();if(name==='setup')loadSetup();}
+    document.querySelectorAll('nav button').forEach(button=>button.addEventListener('click',()=>showView(button.dataset.view)));
 
-    function endpoint(path) { return `api/${path}`; }
+    function poster(movie){return movie.poster_url?`<img loading="lazy" src="${esc(movie.poster_url)}" alt="${esc(movie.title)} poster">`:`<div class="no-poster">${esc(movie.title)}</div>`;}
+    async function loadMovies(){const container=document.getElementById('movies');container.innerHTML='<div class="empty">Loading movies...</div>';const params=new URLSearchParams({page:'1',collection:state.collection});if(state.query)params.set('query',state.query);try{const data=await api(`catalog/movies?${params}`);document.getElementById('catalogue-title').textContent=state.query?`Results for “${state.query}”`:`${state.collection.replace('_',' ')} movies`;document.getElementById('catalogue-meta').textContent=`${data.total_results.toLocaleString()} titles available`;container.innerHTML=data.movies.length?data.movies.map(movie=>`<button class="movie" data-id="${movie.tmdb_id}"><div class="poster">${poster(movie)}</div><div class="movie-title">${esc(movie.title)}</div><div class="movie-meta">${esc(movie.year||'Year unknown')} · ★ ${movie.rating.toFixed(1)}</div></button>`).join(''):'<div class="empty">No movies matched your search.</div>';container.querySelectorAll('.movie').forEach(card=>card.addEventListener('click',()=>openMovie(card.dataset.id)));}catch(error){container.innerHTML=`<div class="empty">${esc(error.message)}. Open Setup and connect TMDb.</div>`;}}
+    document.getElementById('search-form').addEventListener('submit',event=>{event.preventDefault();state.query=document.getElementById('search').value.trim();loadMovies();});
+    document.querySelectorAll('[data-collection]').forEach(button=>button.addEventListener('click',()=>{state.collection=button.dataset.collection;state.query='';document.getElementById('search').value='';document.querySelectorAll('[data-collection]').forEach(item=>item.classList.toggle('active',item===button));loadMovies();}));
 
-    async function request(path, options = {}) {
-      const response = await fetch(endpoint(path), options);
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Request failed');
-      return body;
-    }
+    async function openMovie(id){const modal=document.getElementById('modal');modal.classList.remove('hidden');document.getElementById('detail').innerHTML='<div class="empty">Loading movie details...</div>';try{state.movie=await api(`catalog/movies/${id}`);renderDetail();}catch(error){document.getElementById('detail').innerHTML=`<div class="empty">${esc(error.message)}</div>`;}}
+    function renderDetail(){const movie=state.movie;const genres=(movie.genres||[]).map(item=>item.name).join(' · ');const backdrop=movie.backdrop_url?`background-image:url('${esc(movie.backdrop_url)}')`:'';document.getElementById('detail').innerHTML=`<div class="detail-hero" style="${backdrop}"><div class="detail-copy"><div class="eyebrow">${esc(genres||'Movie')}</div><h2 id="detail-title">${esc(movie.title)}</h2><div class="muted">${esc(movie.year||'')} · ${movie.runtime_minutes?`${movie.runtime_minutes} min · `:''}★ ${movie.rating.toFixed(1)}</div><div class="actions"><button class="button primary" id="auto-request">Request best release</button><button class="button" id="choose-release">Choose a release</button>${movie.trailer_url?`<a class="button" href="${esc(movie.trailer_url)}" target="_blank" rel="noopener">Watch trailer</a>`:''}</div></div></div><div class="detail-body"><p class="muted">${esc(movie.overview||'No synopsis is available.')}</p><div id="release-area"></div></div>`;document.getElementById('auto-request').addEventListener('click',event=>submitRequest(null,event.currentTarget));document.getElementById('choose-release').addEventListener('click',findReleases);}
+    function rules(){return{maximum_size_gb:Number(document.getElementById('max-size')?.value||3),minimum_seeders:Number(document.getElementById('min-seeders')?.value||1),require_1080p:document.getElementById('require-1080')?.checked??true};}
+    function rulesHtml(){return`<div class="release-rules"><label class="field">Maximum size (GB)<input id="max-size" type="number" min="0.1" max="100" step="0.1" value="3"></label><label class="field">Minimum seeders<input id="min-seeders" type="number" min="0" value="1"></label><label class="field">Quality<select id="require-1080"><option value="true">1080p only</option></select></label></div>`;}
+    async function findReleases(){const area=document.getElementById('release-area');area.innerHTML=`${rulesHtml()}<div class="empty">Searching IPTorrents through Radarr and Prowlarr...</div>`;try{const data=await api(`movies/${state.movie.tmdb_id}/releases`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(rules())});area.innerHTML=`${rulesHtml()}<div class="heading"><div><h2>Available releases</h2><p>${data.releases.length} results from your configured indexers.</p></div><button class="button" id="rerun-search">Search again</button></div><div class="releases">${data.releases.map(release=>`<article class="release"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${release.size_gb.toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span><span>${release.age_hours}h old</span>${release.flags.map(flag=>`<span>${esc(flag)}</span>`).join('')}</div>${release.policy_rejections.length?`<div class="release-reasons">${esc(release.policy_rejections.join(' · '))}</div>`:''}</div><button class="button ${release.eligible?'primary':''}" data-token="${esc(release.release_token)}" ${release.eligible?'':'disabled'}>${release.eligible?'Download':'Rejected'}</button></article>`).join('')||'<div class="empty">No releases were returned. Check the IPTorrents indexer in Prowlarr.</div>'}</div>`;document.getElementById('rerun-search').addEventListener('click',findReleases);area.querySelectorAll('[data-token]').forEach(button=>button.addEventListener('click',()=>submitRequest(button.dataset.token,button)));}catch(error){area.innerHTML=`${rulesHtml()}<div class="empty">${esc(error.message)}</div>`;}}
+    async function submitRequest(token,button){button.disabled=true;const original=button.textContent;button.textContent='Requesting...';try{await api(`movies/${state.movie.tmdb_id}/request`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...rules(),release_token:token})});toast(`${state.movie.title} was sent to Radarr.`);closeModal();showView('downloads');}catch(error){toast(error.message);button.disabled=false;button.textContent=original;}}
+    function closeModal(){document.getElementById('modal').classList.add('hidden');state.movie=null;}document.getElementById('close-modal').addEventListener('click',closeModal);document.getElementById('modal').addEventListener('click',event=>{if(event.target.id==='modal')closeModal();});
 
-    function statusLabel(status) {
-      return ({connected: 'Connected', not_configured: 'Needs details', authentication_failed: 'Check credentials', unavailable: 'Unavailable', invalid_response: 'Invalid response'})[status] || 'Not configured';
-    }
+    async function loadDownloads(){const container=document.getElementById('downloads');container.innerHTML='<div class="empty">Refreshing Radarr and qBittorrent...</div>';try{const data=await api('downloads');container.innerHTML=data.length?data.map(item=>`<article class="panel download"><div><h3>${esc(item.title)}</h3><div class="muted">Requested by ${esc(item.requested_by_name)} · ${esc(item.status_message||item.status)}</div><div class="progress"><span style="width:${Number(item.progress||0)}%"></span></div></div><span class="status ${esc(item.status)}">${esc(item.status.replaceAll('_',' '))} ${Number(item.progress||0).toFixed(0)}%</span></article>`).join(''):'<div class="empty">No movie requests yet. Browse the catalogue to request one.</div>';}catch(error){container.innerHTML=`<div class="empty">${esc(error.message)}</div>`;}}document.getElementById('refresh-downloads').addEventListener('click',loadDownloads);
 
-    function render(data) {
-      latest = data;
-      document.getElementById('version').textContent = data.version;
-      const discovery = data.discovery.services || [];
-      const connections = data.connections.services || [];
-      const detected = discovery.filter(item => item.detected).length;
-      const connected = connections.filter(item => item.status === 'connected').length;
-      document.getElementById('detected-count').textContent = data.discovery.available ? `${detected} of 4` : 'Unavailable';
-      document.getElementById('connected-count').textContent = `${connected} of 5`;
-      document.getElementById('progress-text').textContent = connected === 5 ? 'Setup complete' : `${connected} of 5 services ready`;
-      document.getElementById('progress-bar').style.width = `${connected * 20}%`;
+    function setSetupMessage(text,kind=''){const el=document.getElementById('setup-message');el.textContent=text;el.className=`message ${kind}`;}
+    function statusLabel(value){return({connected:'Connected',not_configured:'Needs details',authentication_failed:'Check credentials',unavailable:'Unavailable',invalid_response:'Invalid response'})[value]||'Not configured';}
+    async function loadRadarrOptions(settings){try{const data=await api('radarr/options');const root=document.getElementById('radarr_root_folder_path');const profile=document.getElementById('radarr_quality_profile_id');root.innerHTML='<option value="">Automatic</option>'+data.root_folders.map(item=>`<option value="${esc(item.path)}">${esc(item.path)}</option>`).join('');profile.innerHTML='<option value="0">Automatic</option>'+data.quality_profiles.map(item=>`<option value="${item.id}">${esc(item.name)}</option>`).join('');root.value=settings.root_folder_path||'';profile.value=String(settings.quality_profile_id||0);}catch(error){/* Radarr may not be configured yet. */}}
+    async function loadSetup(){setSetupMessage('Discovering apps and testing connections...');try{const data=await api('setup');serviceNames.forEach(name=>{const card=document.querySelector(`[data-service="${name}"]`);const connection=data.connections.services.find(item=>item.name===name)||{};const badge=card.querySelector('[data-status]');badge.textContent=statusLabel(connection.status);badge.className=`badge ${connection.status==='connected'?'connected':''}`;const settings=data.settings[name]||{};if(name!=='tmdb'){const url=document.getElementById(`${name}_url`);if(!url.value)url.value=settings.url||data.discovery.services.find(item=>item.name===name)?.suggested_url||'';}if(name==='qbittorrent'&&!document.getElementById('qbittorrent_username').value)document.getElementById('qbittorrent_username').value=settings.username||'';const id=name==='tmdb'?'tmdb_api_key':name==='qbittorrent'?'qbittorrent_password':`${name}_api_key`;const saved=name==='qbittorrent'?settings.password_set:settings.api_key_set;if(saved)document.getElementById(id).placeholder='Saved, enter a new value to replace';});await loadRadarrOptions(data.settings.radarr||{});setSetupMessage(`${data.connections.connected} of 5 services connected.`);}catch(error){setSetupMessage(error.message,'error');}}
+    document.getElementById('discover').addEventListener('click',loadSetup);document.getElementById('setup-form').addEventListener('submit',async event=>{event.preventDefault();const button=document.getElementById('save-setup');button.disabled=true;setSetupMessage('Saving and testing connections...');const updates={};['prowlarr_url','radarr_url','radarr_root_folder_path','radarr_quality_profile_id','sonarr_url','qbittorrent_url','qbittorrent_username'].forEach(id=>updates[id]=document.getElementById(id).value);secretFields.forEach(id=>{const value=document.getElementById(id).value;if(value)updates[id]=value;});try{await api('setup/integrations',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates,clear_secrets:[]})});secretFields.forEach(id=>document.getElementById(id).value='');setSetupMessage('Settings saved. Connections retested.','success');await loadSetup();await loadMovies();}catch(error){setSetupMessage(error.message,'error');}finally{button.disabled=false;}});
 
-      services.forEach(name => {
-        const card = document.querySelector(`[data-service="${name}"]`);
-        const badge = card.querySelector('[data-status]');
-        const hint = card.querySelector('[data-hint]');
-        const connection = connections.find(item => item.name === name) || {};
-        const found = discovery.find(item => item.name === name);
-        badge.textContent = statusLabel(connection.status);
-        badge.className = `badge ${connection.status === 'connected' ? 'connected' : connection.status === 'authentication_failed' ? 'error' : found?.detected ? 'detected' : connection.status === 'unavailable' ? 'warning' : ''}`;
-        if (connection.message) hint.textContent = connection.message;
-
-        const settings = data.settings[name] || {};
-        if (name !== 'tmdb') {
-          const url = document.getElementById(`${name}_url`);
-          if (!url.value) url.value = settings.url || found?.suggested_url || '';
-        }
-        if (name === 'qbittorrent' && !document.getElementById('qbittorrent_username').value) {
-          document.getElementById('qbittorrent_username').value = settings.username || '';
-        }
-
-        const secretState = name === 'qbittorrent' ? settings.password_set : settings.api_key_set;
-        const secretId = name === 'tmdb' ? 'tmdb_api_key' : name === 'qbittorrent' ? 'qbittorrent_password' : `${name}_api_key`;
-        if (secretState && !document.getElementById(secretId).value) {
-          document.getElementById(secretId).placeholder = 'Saved, enter a new value to replace';
-        }
-      });
-    }
-
-    async function loadSetup(button) {
-      if (button) button.disabled = true;
-      setMessage('Discovering Home Assistant apps and testing connections...');
-      try {
-        render(await request('setup'));
-        setMessage(latest.discovery.available ? 'Discovery complete. Review the suggested addresses before saving.' : latest.discovery.message);
-      } catch (error) {
-        setMessage(error.message, 'error');
-      } finally {
-        if (button) button.disabled = false;
-      }
-    }
-
-    function setMessage(text, kind = '') {
-      const message = document.getElementById('message');
-      message.textContent = text;
-      message.className = `message ${kind}`;
-    }
-
-    document.getElementById('discover-button').addEventListener('click', event => loadSetup(event.currentTarget));
-    document.getElementById('setup-form').addEventListener('submit', async event => {
-      event.preventDefault();
-      const button = document.getElementById('save-button');
-      button.disabled = true;
-      setMessage('Saving securely and testing all connections...');
-      const updates = {};
-      ['prowlarr_url', 'radarr_url', 'sonarr_url', 'qbittorrent_url', 'qbittorrent_username'].forEach(id => {
-        updates[id] = document.getElementById(id).value;
-      });
-      secretFields.forEach(id => {
-        const value = document.getElementById(id).value;
-        if (value) updates[id] = value;
-      });
-      try {
-        const data = await request('setup/integrations', {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({updates, clear_secrets: []}),
-        });
-        secretFields.forEach(id => { document.getElementById(id).value = ''; });
-        render(data);
-        setMessage(data.connections.connected === 5 ? 'All services saved and connected.' : 'Settings saved. Review any services that are not connected yet.', data.connections.connected ? 'success' : '');
-      } catch (error) {
-        setMessage(error.message, 'error');
-      } finally {
-        button.disabled = false;
-      }
-    });
-
-    loadSetup();
+    async function initialise(){try{state.user=await api('users/me');document.getElementById('user').textContent=`${state.user.display_name} · ${state.user.role}`;if(state.user.role!=='admin')document.getElementById('setup-nav').classList.add('hidden');await loadMovies();}catch(error){document.getElementById('movies').innerHTML=`<div class="empty">${esc(error.message)}</div>`;}}
+    initialise();
   </script>
 </body>
 </html>
