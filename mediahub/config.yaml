@@ -1,5 +1,5 @@
 name: MediaHub
-version: "0.5.0-dev"
+version: "0.6.0-dev"
 slug: mediahub
 description: Family-friendly movie and TV request management for Home Assistant
 url: https://github.com/stunwill/media-request-home-assistant
@@ -10,6 +10,10 @@ arch:
 init: false
 ingress: true
 ingress_port: 8099
+ports:
+  8100/tcp: 8100
+ports_description:
+  8100/tcp: MediaHub external login interface
 panel_icon: mdi:movie-open
 panel_title: MediaHub
 panel_admin: true

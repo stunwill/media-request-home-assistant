@@ -5,6 +5,8 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 ## Current capabilities
 
 - Home Assistant Ingress access
+- Standalone MediaHub login for access without a Home Assistant account
+- Administrator user management, password resets, account disabling, and role assignment
 - Per-user request history and roles
 - Automatic request approval
 - TMDb movie discovery, search, posters, details, cast, ratings, and trailers
@@ -18,7 +20,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-MediaHub is in active early development. Version `0.5.0-dev` delivers the first complete movie workflow. Television discovery and Sonarr submission remain planned.
+MediaHub is in active early development. Version `0.6.0-dev` adds secure external authentication and user management to the complete movie workflow. Television discovery and Sonarr submission remain planned.
 
 ## Movie request workflow
 
@@ -47,13 +49,22 @@ Credentials entered in the wizard are stored in MediaHub's private `/data/mediah
 
 The discovery API requires the `SUPERVISOR_TOKEN` supplied by Home Assistant. When MediaHub runs outside Home Assistant for development, discovery reports itself unavailable without preventing manual configuration.
 
-## Users and roles
+## Users, roles, and external login
 
-MediaHub trusts Home Assistant Ingress for authentication and links each request to the signed-in Home Assistant user using the documented `X-Remote-User-Id`, `X-Remote-User-Name`, and `X-Remote-User-Display-Name` headers. Requests without an Ingress identity are rejected.
+MediaHub supports two deliberately separate authentication listeners:
+
+- Home Assistant Ingress on internal port `8099` accepts only the documented Home Assistant `X-Remote-User-*` identity.
+- The external interface on port `8100` ignores Home Assistant identity headers and accepts only MediaHub username/password sessions.
+
+This separation prevents a caller on the exposed interface from forging a Home Assistant user header. Do not expose the Ingress listener.
 
 The first authenticated MediaHub user is assigned the `admin` role. Later users start as `requester` until a MediaHub administrator changes their role. Administrators can manage integrations, audit history, and roles. Managers can view household requests and operational status. Requesters can create requests and view only their own request history.
 
-The Home Assistant sidebar panel remains restricted to Home Assistant administrators during this bootstrap stage. A later onboarding change can open the panel to household users after an administrator has been established, without risking a first-visit role takeover.
+Public self-registration is disabled. An administrator opens MediaHub through Home Assistant and uses the **Users** page to create a MediaHub account, assign its role, disable or enable it, and reset its password. Passwords require at least 12 characters and are stored only as salted `scrypt` hashes. Password resets and account disabling revoke existing sessions.
+
+Sessions expire after seven days and use `HttpOnly`, `SameSite=Strict` cookies. HTTPS routes receive `Secure` cookies. State-changing requests from password sessions also require a per-session CSRF token. Failed logins are limited to five attempts per username and connection source within 15 minutes.
+
+Port `8100` makes the authenticated interface available on the local network. A public address still requires an HTTPS reverse proxy or tunnel. Follow [External access](docs/EXTERNAL_ACCESS.md) and expose only port `8100`, never Home Assistant Ingress, Prowlarr, Radarr, Sonarr, or qBittorrent.
 
 ## Radarr request settings
 
