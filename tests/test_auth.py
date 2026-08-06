@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -131,6 +132,165 @@ class AuthenticationApiTests(unittest.TestCase):
         self.assertEqual(renamed.json()["username"], "stuart")
         self.assertEqual(renamed.json()["display_name"], "Stuart")
         self.assertEqual(renamed.json()["role"], "admin")
+
+    def create_local_account(
+        self,
+        *,
+        username: str = "lee",
+        display_name: str = "Lee",
+        password: str = "correct horse battery staple",
+        role: str = "requester",
+    ) -> dict:
+        self.client.get("/api/users/me", headers=self.admin_headers)
+        response = self.client.post(
+            "/api/users",
+            headers=self.admin_headers,
+            json={
+                "username": username,
+                "display_name": display_name,
+                "password": password,
+                "role": role,
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()
+
+    def test_external_listener_ignores_spoofed_ingress_headers(self) -> None:
+        with patch.dict(os.environ, {"MEDIAHUB_AUTH_MODE": "external"}):
+            response = self.client.get("/api/users/me", headers=self.admin_headers)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "Sign in to MediaHub to continue")
+
+    def test_local_login_uses_session_cookie_and_csrf_protection(self) -> None:
+        self.create_local_account()
+        with patch.dict(os.environ, {"MEDIAHUB_AUTH_MODE": "external"}):
+            login = self.client.post(
+                "/api/auth/login",
+                json={
+                    "username": "LEE",
+                    "password": "correct horse battery staple",
+                },
+            )
+            me = self.client.get("/api/users/me")
+            missing_csrf = self.client.post("/api/auth/logout")
+            logout = self.client.post(
+                "/api/auth/logout",
+                headers={"X-CSRF-Token": login.json()["csrf_token"]},
+            )
+            signed_out = self.client.get("/api/users/me")
+
+        self.assertEqual(login.status_code, 200, login.text)
+        self.assertEqual(login.json()["auth_source"], "mediahub")
+        self.assertIn("mediahub_session", login.headers.get("set-cookie", ""))
+        self.assertIn("HttpOnly", login.headers.get("set-cookie", ""))
+        self.assertEqual(login.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(login.headers["cache-control"], "no-store")
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(missing_csrf.status_code, 403)
+        self.assertEqual(logout.status_code, 200)
+        self.assertEqual(signed_out.status_code, 401)
+
+    def test_password_is_hashed_and_reset_revokes_sessions(self) -> None:
+        created = self.create_local_account()
+        with main.connect_db() as db:
+            stored = db.execute(
+                "SELECT password_hash FROM local_credentials WHERE user_id = ?",
+                (created["id"],),
+            ).fetchone()[0]
+        self.assertTrue(str(stored).startswith("scrypt$"))
+        self.assertNotIn("correct horse", str(stored))
+
+        external_client = TestClient(main.app)
+        try:
+            with patch.dict(os.environ, {"MEDIAHUB_AUTH_MODE": "external"}):
+                login = external_client.post(
+                    "/api/auth/login",
+                    json={
+                        "username": "lee",
+                        "password": "correct horse battery staple",
+                    },
+                )
+                self.assertEqual(login.status_code, 200)
+            reset = self.client.put(
+                f"/api/users/{created['id']}/password",
+                headers=self.admin_headers,
+                json={"password": "a newer and longer private password"},
+            )
+            with patch.dict(os.environ, {"MEDIAHUB_AUTH_MODE": "external"}):
+                expired = external_client.get("/api/users/me")
+                old_login = external_client.post(
+                    "/api/auth/login",
+                    json={
+                        "username": "lee",
+                        "password": "correct horse battery staple",
+                    },
+                )
+                new_login = external_client.post(
+                    "/api/auth/login",
+                    json={
+                        "username": "lee",
+                        "password": "a newer and longer private password",
+                    },
+                )
+        finally:
+            external_client.close()
+
+        self.assertEqual(reset.status_code, 200, reset.text)
+        self.assertEqual(expired.status_code, 401)
+        self.assertEqual(old_login.status_code, 401)
+        self.assertEqual(new_login.status_code, 200)
+
+    def test_failed_logins_are_rate_limited(self) -> None:
+        self.create_local_account()
+        with patch.dict(os.environ, {"MEDIAHUB_AUTH_MODE": "external"}):
+            attempts = [
+                self.client.post(
+                    "/api/auth/login",
+                    json={"username": "lee", "password": "wrong password"},
+                )
+                for _ in range(6)
+            ]
+
+        self.assertTrue(all(item.status_code == 401 for item in attempts[:5]))
+        self.assertEqual(attempts[5].status_code, 429)
+
+    def test_last_active_administrator_cannot_be_disabled(self) -> None:
+        local_admin = self.create_local_account(
+            username="external-admin",
+            display_name="External Admin",
+            role="admin",
+        )
+        external_client = TestClient(main.app)
+        try:
+            with patch.dict(os.environ, {"MEDIAHUB_AUTH_MODE": "external"}):
+                login = external_client.post(
+                    "/api/auth/login",
+                    json={
+                        "username": "external-admin",
+                        "password": "correct horse battery staple",
+                    },
+                )
+                csrf = login.json()["csrf_token"]
+                disabled_ingress_admin = external_client.put(
+                    "/api/users/ha-admin/active",
+                    headers={"X-CSRF-Token": csrf},
+                    json={"active": False},
+                )
+                disabled_last_admin = external_client.put(
+                    f"/api/users/{local_admin['id']}/active",
+                    headers={"X-CSRF-Token": csrf},
+                    json={"active": False},
+                )
+        finally:
+            external_client.close()
+
+        self.assertEqual(disabled_ingress_admin.status_code, 200)
+        self.assertEqual(disabled_last_admin.status_code, 409)
+        self.assertEqual(
+            disabled_last_admin.json()["detail"],
+            "MediaHub must retain at least one active administrator",
+        )
 
 
 if __name__ == "__main__":

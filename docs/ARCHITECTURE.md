@@ -50,9 +50,17 @@ MediaHub provides a family-friendly Home Assistant Ingress interface for discove
    - Home Assistant-linked users and MediaHub roles
    - Future media cache, recommendations, and integration state
 
+8. **Separated authentication listeners**
+   - Home Assistant Ingress on `8099`, accepting only Supervisor-provided identity
+   - External MediaHub on `8100`, accepting only application sessions
+   - Shared SQLite users and authorization roles across both listeners
+   - No public self-registration or default credentials
+
 ## Authentication and authorization
 
-Home Assistant Ingress is the authentication boundary. MediaHub requires the Supervisor-provided `X-Remote-User-Id` header and uses `X-Remote-User-Name` and `X-Remote-User-Display-Name` to keep the local user profile current. Client-supplied application credentials are not accepted.
+Home Assistant Ingress and MediaHub password sessions are separate authentication boundaries. The Ingress process requires the Supervisor-provided `X-Remote-User-Id` header and uses `X-Remote-User-Name` and `X-Remote-User-Display-Name` to keep the local profile current. The external process ignores these headers completely, preventing public callers from impersonating a Home Assistant identity.
+
+External accounts are created only by an existing administrator. Passwords are salted `scrypt` hashes. Raw session tokens are sent only in `HttpOnly`, `SameSite=Strict` cookies and stored only as SHA-256 hashes. HTTPS requests receive `Secure` cookies. Mutations require a random per-session CSRF token. Sessions expire after seven days, and password reset or deactivation revokes them immediately. Login failures are rate-limited and old failure records are pruned.
 
 MediaHub persists three application roles:
 
@@ -60,7 +68,7 @@ MediaHub persists three application roles:
 - `manager`: operational status and all household request history
 - `requester`: request creation and access to the user's own request history
 
-The first authenticated user becomes the bootstrap administrator. The panel remains Home Assistant-admin-only during this stage, preventing a non-administrator from claiming the bootstrap role. All later users default to `requester`, and the last active MediaHub administrator cannot be demoted.
+The first authenticated Home Assistant user becomes the bootstrap administrator. Public self-registration is unavailable, so an internet visitor cannot claim this role. All later Home Assistant users default to `requester`, and local MediaHub accounts receive the role selected by an administrator. The last active MediaHub administrator cannot be demoted or disabled.
 
 ## Initial request lifecycle
 
@@ -134,7 +142,9 @@ Credentials and secrets must never be recorded.
 
 ## Setup security
 
-The MediaHub panel is restricted to Home Assistant administrators while Milestone 1 setup is being built. Home Assistant Ingress provides authentication, and the setup API is not published through a host port. Runtime configuration responses return only non-sensitive connection fields and booleans indicating whether each secret exists.
+The MediaHub panel remains restricted to Home Assistant administrators. Setup APIs require the shared MediaHub `admin` role on both listeners. Runtime configuration responses return only non-sensitive connection fields and booleans indicating whether each secret exists.
+
+External access terminates HTTPS at a tunnel or reverse proxy and forwards only to port `8100`. Port `8099` is reserved for Supervisor Ingress. Prowlarr, Radarr, Sonarr, qBittorrent, their API keys, and private-tracker credentials remain on the private app network.
 
 Automatic discovery uses read-only Supervisor app metadata. It does not read another app's options and does not communicate directly with any private tracker. Prowlarr remains MediaHub's only indexer boundary.
 

@@ -6,6 +6,12 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- A standalone MediaHub sign-in screen for users who do not have a Home Assistant session.
+- An admin-only Users page for local account creation, role assignment, activation, deactivation, and password reset.
+- Salted `scrypt` password hashing, hashed seven-day sessions, `HttpOnly`/`SameSite` cookies, HTTPS `Secure` cookies, CSRF protection, and login throttling.
+- Immediate session revocation after password reset or account deactivation.
+- A dedicated external listener on port `8100` that ignores Home Assistant identity headers.
+- External HTTPS reverse-proxy and tunnel deployment documentation.
 - A responsive movie browsing dashboard with TMDb collections, search, posters, details, cast, ratings, runtime, and trailers.
 - Automatic movie requests using configurable 1080p, maximum-size, minimum-seeder, storage, and Radarr acceptance rules.
 - Interactive Radarr release search with indexer, release title, quality, size, seeders, age, freeleech flags, and rejection reasons.
@@ -28,7 +34,8 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.5.0-dev`.
+- Development version advanced to `0.6.0-dev`.
+- Home Assistant Ingress and external password authentication now run on isolated listeners sharing the same role model.
 - Ingress identity handling now uses Home Assistant's documented `X-Remote-User-*` headers.
 - Setup, discovery, integration settings, audit, and user management require a MediaHub administrator.
 - Storage and integration status require a MediaHub manager or administrator.

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
+import os
 import secrets
 import shutil
 import sqlite3
@@ -10,18 +12,28 @@ from pathlib import Path
 from time import monotonic
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from .auth import (
     AuthenticationRequiredError,
+    InvalidCredentialsError,
     LastAdministratorError,
+    LoginRateLimitedError,
     Principal,
     Role,
+    UsernameUnavailableError,
+    authenticate_local_user,
+    create_local_user,
+    create_session,
     ingress_identity,
     list_users,
+    reset_local_password,
+    revoke_session,
+    session_from_token,
     sync_user,
+    update_user_active,
     update_user_role,
 )
 from .discovery import SupervisorDiscovery
@@ -37,7 +49,29 @@ from .web import INDEX_HTML
 
 DATABASE_FILE = APP_DATA / "mediahub.db"
 
-app = FastAPI(title="MediaHub", version="0.5.0-dev")
+app = FastAPI(title="MediaHub", version="0.6.0-dev")
+SESSION_COOKIE = "mediahub_session"
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; img-src 'self' https://image.tmdb.org data:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; "
+        "form-action 'self'"
+    )
+    if request.url.path.startswith(("/api/auth", "/api/users", "/api/setup", "/api/audit")):
+        response.headers["Cache-Control"] = "no-store"
+    forwarded_proto = request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0]
+    if request.url.scheme == "https" or forwarded_proto.strip() == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
 
 
 class MediaRequest(BaseModel):
@@ -79,6 +113,26 @@ class UserRoleUpdate(BaseModel):
     role: Role
 
 
+class LocalUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=100)
+    display_name: str = Field(min_length=1, max_length=250)
+    role: Role = "requester"
+    password: str = Field(min_length=12, max_length=1024)
+
+
+class UserPasswordUpdate(BaseModel):
+    password: str = Field(min_length=12, max_length=1024)
+
+
+class UserActiveUpdate(BaseModel):
+    active: bool
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=1024)
+
+
 class ReleaseRules(BaseModel):
     maximum_size_gb: float = Field(default=3, gt=0, le=100)
     minimum_seeders: int = Field(default=1, ge=0, le=10000)
@@ -99,8 +153,11 @@ def utc_now() -> str:
 
 def connect_db() -> sqlite3.Connection:
     APP_DATA.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DATABASE_FILE)
+    connection = sqlite3.connect(DATABASE_FILE, timeout=30)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.execute("PRAGMA busy_timeout = 30000")
     return connection
 
 
@@ -150,8 +207,38 @@ def initialise_database() -> None:
                 last_seen_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS local_credentials (
+                user_id TEXT PRIMARY KEY,
+                username_normalized TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                password_hash TEXT NOT NULL,
+                password_changed_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                csrf_token TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS login_failures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                failure_key TEXT NOT NULL,
+                attempted_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_users_role_active
             ON users (role, active);
+
+            CREATE INDEX IF NOT EXISTS idx_sessions_user
+            ON sessions (user_id, expires_at);
+
+            CREATE INDEX IF NOT EXISTS idx_login_failures_key_time
+            ON login_failures (failure_key, attempted_at);
 
             CREATE INDEX IF NOT EXISTS idx_requests_external_status
             ON requests (media_type, external_id, status);
@@ -193,34 +280,62 @@ def record_audit(
 
 
 def current_user(
+    request: Request,
     x_remote_user_id: str | None = Header(default=None, alias="X-Remote-User-Id"),
     x_remote_user_name: str | None = Header(default=None, alias="X-Remote-User-Name"),
     x_remote_user_display_name: str | None = Header(
         default=None,
         alias="X-Remote-User-Display-Name",
     ),
+    x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
 ) -> Principal:
-    try:
-        identity = ingress_identity(
-            user_id=x_remote_user_id,
-            username=x_remote_user_name,
-            display_name=x_remote_user_display_name,
-        )
-    except AuthenticationRequiredError as error:
-        raise HTTPException(status_code=401, detail=str(error)) from error
+    mode = os.environ.get("MEDIAHUB_AUTH_MODE", "ingress").strip().lower()
+    if mode not in {"ingress", "external", "hybrid"}:
+        mode = "ingress"
 
-    with connect_db() as db:
-        principal, created = sync_user(db, identity=identity, now=utc_now())
-        if created:
-            record_audit(
-                db,
-                actor_id=principal.user_id,
-                actor_name=principal.display_name,
-                action="user_registered",
-                request_id=None,
-                details={"role": principal.role},
+    if mode in {"ingress", "hybrid"} and x_remote_user_id:
+        try:
+            identity = ingress_identity(
+                user_id=x_remote_user_id,
+                username=x_remote_user_name,
+                display_name=x_remote_user_display_name,
             )
-        db.commit()
+        except AuthenticationRequiredError as error:
+            raise HTTPException(status_code=401, detail=str(error)) from error
+
+        with connect_db() as db:
+            principal, created = sync_user(db, identity=identity, now=utc_now())
+            if created:
+                record_audit(
+                    db,
+                    actor_id=principal.user_id,
+                    actor_name=principal.display_name,
+                    action="user_registered",
+                    request_id=None,
+                    details={"role": principal.role, "auth_source": "home_assistant"},
+                )
+            db.commit()
+        request.state.auth_source = "home_assistant"
+    elif mode in {"external", "hybrid"}:
+        raw_token = request.cookies.get(SESSION_COOKIE, "")
+        with connect_db() as db:
+            session = session_from_token(db, raw_token=raw_token, now=datetime.now(UTC))
+            db.commit()
+        if session is None:
+            raise HTTPException(status_code=401, detail="Sign in to MediaHub to continue")
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and not (
+            x_csrf_token and hmac.compare_digest(x_csrf_token, session.csrf_token)
+        ):
+            raise HTTPException(status_code=403, detail="Invalid or missing security token")
+        principal = session.principal
+        request.state.auth_source = "mediahub"
+        request.state.csrf_token = session.csrf_token
+        request.state.session_hash = session.session_hash
+    else:
+        raise HTTPException(
+            status_code=401,
+            detail="Home Assistant Ingress authentication is required",
+        )
 
     if not principal.active:
         raise HTTPException(status_code=403, detail="This MediaHub user is inactive")
@@ -370,6 +485,77 @@ def index() -> str:
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "service": "MediaHub", "version": app.version}
+
+
+@app.post("/api/auth/login")
+def login(payload: LoginRequest, request: Request, response: Response) -> dict:
+    if os.environ.get("MEDIAHUB_AUTH_MODE", "ingress").strip().lower() == "ingress":
+        raise HTTPException(
+            status_code=404,
+            detail="MediaHub password login is not available through Home Assistant Ingress",
+        )
+    remote_address = request.client.host if request.client else "unknown"
+    now = datetime.now(UTC)
+    with connect_db() as db:
+        try:
+            principal = authenticate_local_user(
+                db,
+                username=payload.username,
+                password=payload.password,
+                remote_address=remote_address,
+                now=now,
+            )
+        except LoginRateLimitedError as error:
+            db.commit()
+            raise HTTPException(status_code=429, detail=str(error)) from error
+        except InvalidCredentialsError as error:
+            db.commit()
+            raise HTTPException(status_code=401, detail=str(error)) from error
+
+        raw_token, session = create_session(db, principal=principal, now=now)
+        record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="user_logged_in",
+            request_id=None,
+            details={"auth_source": "mediahub"},
+        )
+        db.commit()
+
+    forwarded_proto = request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0]
+    secure_cookie = request.url.scheme == "https" or forwarded_proto.strip() == "https"
+    response.set_cookie(
+        SESSION_COOKIE,
+        raw_token,
+        max_age=7 * 24 * 60 * 60,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="strict",
+        path="/",
+    )
+    result = principal.public_dict()
+    result["csrf_token"] = session.csrf_token
+    return result
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request, response: Response, principal: CurrentUser) -> dict:
+    session_hash = getattr(request.state, "session_hash", "")
+    if session_hash:
+        with connect_db() as db:
+            revoke_session(db, session_hash=session_hash)
+            record_audit(
+                db,
+                actor_id=principal.user_id,
+                actor_name=principal.display_name,
+                action="user_logged_out",
+                request_id=None,
+                details={"auth_source": "mediahub"},
+            )
+            db.commit()
+    response.delete_cookie(SESSION_COOKIE, path="/", samesite="strict")
+    return {"status": "signed_out"}
 
 
 @app.get("/api/storage")
@@ -945,14 +1131,53 @@ def list_audit_events(_: Administrator) -> list[dict]:
 
 
 @app.get("/api/users/me")
-def get_current_user(principal: CurrentUser) -> dict[str, str | bool]:
-    return principal.public_dict()
+def get_current_user(request: Request, principal: CurrentUser) -> dict[str, str | bool]:
+    result = principal.public_dict()
+    csrf_token = getattr(request.state, "csrf_token", "")
+    if csrf_token:
+        result["csrf_token"] = csrf_token
+    return result
 
 
 @app.get("/api/users")
 def get_users(_: Administrator) -> list[dict[str, str | bool]]:
     with connect_db() as db:
         return list_users(db)
+
+
+@app.post("/api/users", status_code=201)
+def add_local_user(
+    payload: LocalUserCreate,
+    principal: Administrator,
+) -> dict[str, str | bool]:
+    with connect_db() as db:
+        try:
+            created = create_local_user(
+                db,
+                username=payload.username,
+                display_name=payload.display_name,
+                role=payload.role,
+                password=payload.password,
+                now=utc_now(),
+            )
+        except UsernameUnavailableError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="local_user_created",
+            request_id=None,
+            details={
+                "user_id": created.user_id,
+                "username": created.username,
+                "role": created.role,
+            },
+        )
+        db.commit()
+    return created.public_dict()
 
 
 @app.put("/api/users/{user_id}/role")
@@ -985,3 +1210,66 @@ def set_user_role(
         )
         db.commit()
     return updated.public_dict()
+
+
+@app.put("/api/users/{user_id}/active")
+def set_user_active(
+    user_id: str,
+    payload: UserActiveUpdate,
+    principal: Administrator,
+) -> dict[str, str | bool]:
+    with connect_db() as db:
+        try:
+            updated = update_user_active(
+                db,
+                user_id=user_id,
+                active=payload.active,
+                now=utc_now(),
+            )
+        except LastAdministratorError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        if updated is None:
+            raise HTTPException(status_code=404, detail="MediaHub user not found")
+        record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="user_activation_updated",
+            request_id=None,
+            details={"user_id": updated.user_id, "active": updated.active},
+        )
+        db.commit()
+    return updated.public_dict()
+
+
+@app.put("/api/users/{user_id}/password")
+def set_user_password(
+    user_id: str,
+    payload: UserPasswordUpdate,
+    principal: Administrator,
+) -> dict:
+    with connect_db() as db:
+        try:
+            updated = reset_local_password(
+                db,
+                user_id=user_id,
+                password=payload.password,
+                now=utc_now(),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        if not updated:
+            raise HTTPException(
+                status_code=404,
+                detail="This account does not use a MediaHub password",
+            )
+        record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="local_user_password_reset",
+            request_id=None,
+            details={"user_id": user_id},
+        )
+        db.commit()
+    return {"status": "password_reset", "user_id": user_id}
