@@ -8,6 +8,7 @@ INDEX_HTML = r"""
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080a0f">
+  <link rel="icon" type="image/png" href="assets/mediahub-icon.png">
   <title>MediaHub</title>
   <style>
     :root {
@@ -19,7 +20,7 @@ INDEX_HTML = r"""
     *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);min-height:100vh} button,input,select{font:inherit}
     button{cursor:pointer}.hidden{display:none!important}.muted{color:var(--muted)}
     .topbar{position:sticky;top:0;z-index:20;height:68px;padding:0 clamp(16px,4vw,54px);display:flex;align-items:center;gap:26px;background:rgba(8,10,15,.88);backdrop-filter:blur(18px);border-bottom:1px solid var(--border)}
-    .brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:1.12rem}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,var(--accent-2),var(--accent));box-shadow:0 10px 28px rgba(78,141,255,.25)}
+    .brand{display:flex;align-items:center;flex:0 0 auto}.brand img{display:block;width:154px;height:auto}
     nav{display:flex;gap:4px}nav button{border:0;background:transparent;color:var(--muted);padding:9px 13px;border-radius:10px;font-weight:750}nav button.active,nav button:hover{color:var(--text);background:rgba(255,255,255,.07)}
     .user{margin-left:auto;color:var(--muted);font-size:.84rem}.shell{max-width:1500px;margin:auto;padding:28px clamp(16px,4vw,54px) 70px}
     .hero{min-height:270px;border-radius:26px;padding:clamp(26px,5vw,62px);display:flex;align-items:end;position:relative;overflow:hidden;background:radial-gradient(circle at 80% 20%,rgba(124,92,255,.3),transparent 34rem),linear-gradient(135deg,#151b2b,#0d1018);border:1px solid var(--border)}
@@ -34,15 +35,15 @@ INDEX_HTML = r"""
     .setup-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.service{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px}.service-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:14px;font-weight:900}.fields{display:grid;gap:11px}.field{display:grid;gap:6px;color:#c8d0dd;font-size:.78rem;font-weight:750}.hint{font-size:.75rem;color:var(--muted);line-height:1.45}.badge{font-size:.7rem;padding:5px 8px;border-radius:99px;color:var(--muted);background:#252b38}.badge.connected{color:var(--success);background:rgba(58,214,140,.12)}.setup-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px}.message{color:var(--muted);font-size:.86rem}.message.error{color:var(--danger)}.message.success{color:var(--success)}
     .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:18px}.dialog{position:relative;width:min(960px,100%);max-height:92vh;overflow:auto;background:#111620;border:1px solid var(--border);border-radius:24px;box-shadow:0 30px 90px rgba(0,0,0,.65)}.close{position:absolute;right:14px;top:14px;z-index:3;width:38px;height:38px;border:1px solid var(--border);border-radius:50%;background:rgba(8,10,15,.75);color:white}.detail-hero{min-height:340px;padding:34px;display:flex;align-items:end;background-size:cover;background-position:center;position:relative}.detail-hero:before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#111620 2%,rgba(17,22,32,.32) 70%),linear-gradient(90deg,rgba(17,22,32,.88),transparent)}.detail-copy{position:relative;max-width:670px}.detail-copy h2{font-size:clamp(2rem,6vw,4rem);line-height:1;margin:8px 0 14px;letter-spacing:-.04em}.detail-body{padding:0 34px 34px}.actions{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}.release-rules{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.releases{display:grid;gap:10px}.release{display:grid;grid-template-columns:1fr auto;gap:14px;padding:14px;border:1px solid var(--border);border-radius:14px;background:#0c1018}.release h4{margin:0 0 7px;overflow-wrap:anywhere}.release-meta{color:var(--muted);font-size:.8rem;display:flex;gap:10px;flex-wrap:wrap}.release-reasons{color:var(--danger);font-size:.77rem;margin-top:8px}.toast{position:fixed;right:20px;bottom:20px;z-index:80;max-width:390px;padding:14px 17px;border-radius:14px;background:#202738;border:1px solid var(--border);box-shadow:0 20px 55px rgba(0,0,0,.45)}
     .attribution{margin-top:32px;color:#697487;font-size:.72rem;text-align:center}
-    .auth-screen{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 50% 15%,rgba(124,92,255,.2),transparent 36rem),var(--bg)}.login-card{width:min(440px,100%);padding:34px;border:1px solid var(--border);border-radius:24px;background:rgba(18,22,32,.96);box-shadow:0 32px 90px rgba(0,0,0,.55)}.login-brand{display:flex;align-items:center;gap:12px;font-size:1.35rem;font-weight:900}.login-card h1{font-size:2.15rem;margin:28px 0 10px}.login-card p{color:var(--muted);line-height:1.55}.login-card form{display:grid;gap:14px;margin-top:24px}.login-card .button{margin-top:4px}.login-message{min-height:21px;color:var(--danger);font-size:.84rem}
+    .auth-screen{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 50% 15%,rgba(124,92,255,.2),transparent 36rem),var(--bg)}.login-card{width:min(440px,100%);padding:34px;border:1px solid var(--border);border-radius:24px;background:rgba(18,22,32,.96);box-shadow:0 32px 90px rgba(0,0,0,.55)}.login-brand{display:flex;align-items:center}.login-brand img{display:block;width:min(310px,100%);height:auto}.login-card h1{font-size:2.15rem;margin:28px 0 10px}.login-card p{color:var(--muted);line-height:1.55}.login-card form{display:grid;gap:14px;margin-top:24px}.login-card .button{margin-top:4px}.login-message{min-height:21px;color:var(--danger);font-size:.84rem}
     .user-layout{display:grid;grid-template-columns:minmax(290px,390px) 1fr;gap:18px;align-items:start}.user-list{display:grid;gap:10px}.user-card{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}.user-card h3{margin:0 0 5px}.user-meta{font-size:.78rem;color:var(--muted)}.user-controls{display:flex;flex-wrap:wrap;justify-content:end;gap:8px}.user-controls select{border:1px solid var(--border);background:#0d1119;color:var(--text);border-radius:10px;padding:9px}.account-source{display:inline-block;margin-left:7px;padding:3px 7px;border-radius:999px;background:#252b38;color:#bcc5d3;font-size:.65rem;font-weight:800}.form-title{margin:0 0 16px}.stack{display:grid;gap:12px}
     @media(max-width:900px){.user-layout{grid-template-columns:1fr}.user-controls{justify-content:start}}
-    @media(max-width:760px){.topbar{gap:10px;height:auto;min-height:62px;flex-wrap:wrap;padding-block:10px}.user{display:none}.shell{padding-top:18px}.hero{min-height:230px}.setup-grid{grid-template-columns:1fr}.movies{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.release-rules{grid-template-columns:1fr}.detail-hero{min-height:290px;padding:24px}.detail-body{padding:0 20px 24px}.setup-actions{align-items:stretch;flex-direction:column}.setup-actions .button{width:100%}.user-card{grid-template-columns:1fr}.login-card{padding:26px}}
+    @media(max-width:760px){.topbar{gap:10px;height:auto;min-height:62px;flex-wrap:wrap;padding-block:10px}.brand img{width:142px}.user{display:none}.shell{padding-top:18px}.hero{min-height:230px}.setup-grid{grid-template-columns:1fr}.movies{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.release-rules{grid-template-columns:1fr}.detail-hero{min-height:290px;padding:24px}.detail-body{padding:0 20px 24px}.setup-actions{align-items:stretch;flex-direction:column}.setup-actions .button{width:100%}.user-card{grid-template-columns:1fr}.login-card{padding:26px}}
   </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="mark">▶</span>MediaHub</div>
+    <div class="brand"><img src="assets/mediahub-logo.png" alt="MediaHub by Stu"></div>
     <nav aria-label="Main navigation">
       <button class="active" data-view="browse">Browse</button>
       <button data-view="downloads">Downloads</button>
@@ -101,7 +102,7 @@ INDEX_HTML = r"""
 
   <div class="auth-screen hidden" id="login-screen">
     <div class="login-card">
-      <div class="login-brand"><span class="mark">▶</span>MediaHub</div>
+      <div class="login-brand"><img src="assets/mediahub-logo.png" alt="MediaHub by Stu"></div>
       <h1>Welcome back.</h1>
       <p>Sign in to search, request and track movies. This account is separate from Home Assistant.</p>
       <form id="login-form">
