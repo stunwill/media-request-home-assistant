@@ -6,6 +6,8 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- The supplied `MediaHub by Stu` wordmark on the main interface and external sign-in screen.
+- A matching play-mark browser icon derived from the supplied MediaHub artwork.
 - A standalone MediaHub sign-in screen for users who do not have a Home Assistant session.
 - An admin-only Users page for local account creation, role assignment, activation, deactivation, and password reset.
 - Salted `scrypt` password hashing, hashed seven-day sessions, `HttpOnly`/`SameSite` cookies, HTTPS `Secure` cookies, CSRF protection, and login throttling.

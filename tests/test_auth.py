@@ -52,6 +52,24 @@ class AuthenticationApiTests(unittest.TestCase):
             "Home Assistant Ingress authentication is required",
         )
 
+    def test_branding_is_available_without_authentication(self) -> None:
+        page = self.client.get("/")
+        logo = self.client.get("/assets/mediahub-logo.png")
+        icon = self.client.get("/assets/mediahub-icon.png")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('src="assets/mediahub-logo.png"', page.text)
+        self.assertIn('href="assets/mediahub-icon.png"', page.text)
+        self.assertEqual(logo.status_code, 200)
+        self.assertEqual(icon.status_code, 200)
+        self.assertEqual(logo.headers["content-type"], "image/png")
+        self.assertEqual(icon.headers["content-type"], "image/png")
+        self.assertTrue(logo.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue(icon.content.startswith(b"\x89PNG\r\n\x1a\n"))
+
+        missing = self.client.get("/assets/not-a-real-logo.png")
+        self.assertEqual(missing.status_code, 404)
+
     def test_first_user_is_bootstrap_admin_and_later_users_are_requesters(self) -> None:
         admin = self.client.get("/api/users/me", headers=self.admin_headers)
         requester = self.client.get("/api/users/me", headers=self.requester_headers)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hmac
 import json
 import os
@@ -48,6 +49,11 @@ from .settings import (
 from .web import INDEX_HTML
 
 DATABASE_FILE = APP_DATA / "mediahub.db"
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
+BRAND_ASSETS = {
+    "mediahub-logo.png": ASSET_DIR / "mediahub-logo.png.b64",
+    "mediahub-icon.png": ASSET_DIR / "mediahub-icon.png.b64",
+}
 
 app = FastAPI(title="MediaHub", version="0.6.0-dev")
 SESSION_COOKIE = "mediahub_session"
@@ -480,6 +486,23 @@ def startup() -> None:
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return INDEX_HTML
+
+
+@app.get("/assets/{asset_name}", include_in_schema=False)
+def brand_asset(asset_name: str) -> Response:
+    asset_file = BRAND_ASSETS.get(asset_name)
+    if asset_file is None or not asset_file.is_file():
+        raise HTTPException(status_code=404, detail="Brand asset not found")
+    try:
+        encoded = "".join(asset_file.read_text(encoding="ascii").split())
+        content = base64.b64decode(encoded, validate=True)
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=500, detail="Brand asset is unavailable") from error
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/api/health")
