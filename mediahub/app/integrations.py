@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -18,14 +19,61 @@ class IntegrationConfig:
     api_key: str = ""
     username: str = ""
     password: str = ""
+    auth_method: str = "password"
 
     @property
     def configured(self) -> bool:
         if self.name == "tmdb":
             return bool(self.api_key.strip())
         if self.name == "qbittorrent":
-            return bool(self.url.strip() and self.username.strip() and self.password)
+            credentials_set = (
+                bool(self.api_key.strip())
+                if self.auth_method == "api_key"
+                else bool(self.username.strip() and self.password)
+            )
+            return bool(self.url.strip() and credentials_set)
         return bool(self.url.strip() and self.api_key.strip())
+
+
+def qbittorrent_headers(base_url: str, api_key: str = "") -> dict[str, str]:
+    parts = urlsplit(base_url.rstrip("/"))
+    origin = f"{parts.scheme}://{parts.netloc}"
+    headers = {
+        "User-Agent": "MediaHub/0.6.1",
+        "Origin": origin,
+        "Referer": f"{base_url.rstrip('/')}/",
+    }
+    if api_key.strip():
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+    return headers
+
+
+async def authenticate_qbittorrent(
+    client: httpx.AsyncClient,
+    *,
+    base_url: str,
+    username: str = "",
+    password: str = "",
+    api_key: str = "",
+) -> str:
+    headers = qbittorrent_headers(base_url, api_key)
+    if not api_key.strip():
+        login = await client.post(
+            f"{base_url.rstrip('/')}/api/v2/auth/login",
+            data={"username": username, "password": password},
+            headers=headers,
+        )
+        login.raise_for_status()
+
+    response = await client.get(
+        f"{base_url.rstrip('/')}/api/v2/app/version",
+        headers=headers,
+    )
+    response.raise_for_status()
+    version = response.text.strip()
+    if not version:
+        raise ValueError("qBittorrent returned an empty version")
+    return version
 
 
 class IntegrationTester:
@@ -47,7 +95,7 @@ class IntegrationTester:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
                 follow_redirects=True,
-                headers={"User-Agent": "MediaHub/0.4"},
+                headers={"User-Agent": "MediaHub/0.6.1"},
                 transport=self.transport,
             ) as client:
                 details = await self._test_service(client, config)
@@ -96,16 +144,14 @@ class IntegrationTester:
                 "version": str(payload["version"]),
             }
 
-        login = await client.post(
-            f"{base_url}/api/v2/auth/login",
-            data={"username": config.username, "password": config.password},
+        version = await authenticate_qbittorrent(
+            client,
+            base_url=base_url,
+            username=config.username,
+            password=config.password,
+            api_key=config.api_key if config.auth_method == "api_key" else "",
         )
-        login.raise_for_status()
-        if login.text.strip() != "Ok.":
-            raise ValueError("qBittorrent rejected credentials")
-        response = await client.get(f"{base_url}/api/v2/app/version")
-        response.raise_for_status()
-        return {"version": response.text.strip()}
+        return {"version": version}
 
     @staticmethod
     def _result(
@@ -151,7 +197,9 @@ def integration_configs(options: dict[str, Any]) -> list[IntegrationConfig]:
         IntegrationConfig(
             name="qbittorrent",
             url=str(integrations.get("qbittorrent_url", "")),
+            api_key=str(integrations.get("qbittorrent_api_key", "")),
             username=str(integrations.get("qbittorrent_username", "")),
             password=str(integrations.get("qbittorrent_password", "")),
+            auth_method=str(integrations.get("qbittorrent_auth_method", "password")),
         ),
     ]

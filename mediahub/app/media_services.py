@@ -5,6 +5,8 @@ from typing import Any
 
 import httpx
 
+from .integrations import authenticate_qbittorrent, qbittorrent_headers
+
 
 class MediaServiceError(RuntimeError):
     def __init__(self, message: str, *, status_code: int = 502) -> None:
@@ -69,7 +71,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.5"},
+                headers={"User-Agent": "MediaHub/0.6.1"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -189,7 +191,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.5"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.1"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()
@@ -314,32 +316,42 @@ class QBittorrentClient:
         username: str,
         password: str,
         *,
+        api_key: str = "",
+        auth_method: str = "password",
         timeout_seconds: float = 12,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.url = url.rstrip("/")
         self.username = username.strip()
         self.password = password
+        self.api_key = api_key.strip()
+        self.auth_method = auth_method
         self.timeout = httpx.Timeout(timeout_seconds)
         self.transport = transport
 
     async def torrents(self) -> list[dict[str, Any]]:
-        if not self.url or not self.username or not self.password:
+        credentials_set = (
+            bool(self.api_key)
+            if self.auth_method == "api_key"
+            else bool(self.username and self.password)
+        )
+        if not self.url or not credentials_set:
             return []
         try:
+            api_key = self.api_key if self.auth_method == "api_key" else ""
             async with httpx.AsyncClient(
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.5"},
+                headers=qbittorrent_headers(self.url, api_key),
             ) as client:
-                login = await client.post(
-                    "/api/v2/auth/login",
-                    data={"username": self.username, "password": self.password},
+                await authenticate_qbittorrent(
+                    client,
+                    base_url=self.url,
+                    username=self.username,
+                    password=self.password,
+                    api_key=api_key,
                 )
-                login.raise_for_status()
-                if login.text.strip() != "Ok.":
-                    raise MediaServiceError("qBittorrent credentials were rejected", status_code=503)
                 response = await client.get("/api/v2/torrents/info", params={"sort": "added_on", "reverse": "true"})
                 response.raise_for_status()
                 payload = response.json()
@@ -348,7 +360,13 @@ class QBittorrentClient:
         except httpx.TimeoutException as error:
             raise MediaServiceError("qBittorrent request timed out") from error
         except httpx.HTTPStatusError as error:
-            raise MediaServiceError(f"qBittorrent request failed with HTTP {error.response.status_code}") from error
+            code = error.response.status_code
+            if code in {401, 403}:
+                raise MediaServiceError(
+                    "qBittorrent credentials were rejected",
+                    status_code=503,
+                ) from error
+            raise MediaServiceError(f"qBittorrent request failed with HTTP {code}") from error
         except (httpx.RequestError, ValueError) as error:
             raise MediaServiceError("qBittorrent is unavailable") from error
         return payload if isinstance(payload, list) else []
@@ -368,5 +386,7 @@ def configured_clients(options: dict[str, Any]) -> tuple[TmdbClient, RadarrClien
             str(values.get("qbittorrent_url", "")),
             str(values.get("qbittorrent_username", "")),
             str(values.get("qbittorrent_password", "")),
+            api_key=str(values.get("qbittorrent_api_key", "")),
+            auth_method=str(values.get("qbittorrent_auth_method", "password")),
         ),
     )

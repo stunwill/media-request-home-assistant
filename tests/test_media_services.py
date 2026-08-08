@@ -10,7 +10,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from mediahub.app import main
-from mediahub.app.media_services import RadarrClient, TmdbClient
+from mediahub.app.media_services import QBittorrentClient, RadarrClient, TmdbClient
 
 
 def headers() -> dict[str, str]:
@@ -130,6 +130,65 @@ class RadarrClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["seeders"], 12)
         self.assertNotIn("downloadUrl", result)
         self.assertNotIn("secret-passkey", str(result))
+
+
+class QBittorrentClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_password_login_and_torrent_progress_share_authenticated_session(self) -> None:
+        seen_paths: list[str] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            seen_paths.append(request.url.path)
+            self.assertEqual(request.headers["Origin"], "http://qbittorrent:8080")
+            self.assertEqual(request.headers["Referer"], "http://qbittorrent:8080/")
+            if request.url.path == "/api/v2/auth/login":
+                return httpx.Response(
+                    200,
+                    text="Unexpected but authenticated response",
+                    headers={"Set-Cookie": "SID=session; path=/"},
+                )
+            self.assertEqual(request.headers.get("Cookie"), "SID=session")
+            if request.url.path == "/api/v2/app/version":
+                return httpx.Response(200, text="v5.2.0")
+            if request.url.path == "/api/v2/torrents/info":
+                return httpx.Response(200, json=[{"hash": "private", "progress": 0.5}])
+            self.fail(f"Unexpected qBittorrent request: {request.url}")
+
+        client = QBittorrentClient(
+            "http://qbittorrent:8080",
+            "mediahub",
+            "secret",
+            transport=httpx.MockTransport(handler),
+        )
+
+        torrents = await client.torrents()
+
+        self.assertEqual(torrents[0]["progress"], 0.5)
+        self.assertEqual(seen_paths, [
+            "/api/v2/auth/login",
+            "/api/v2/app/version",
+            "/api/v2/torrents/info",
+        ])
+
+    async def test_api_key_authenticates_version_and_torrent_requests(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            self.assertNotEqual(request.url.path, "/api/v2/auth/login")
+            self.assertEqual(request.headers["Authorization"], "Bearer qbt_example")
+            if request.url.path == "/api/v2/app/version":
+                return httpx.Response(200, text="v5.2.0")
+            if request.url.path == "/api/v2/torrents/info":
+                return httpx.Response(200, json=[])
+            self.fail(f"Unexpected qBittorrent request: {request.url}")
+
+        client = QBittorrentClient(
+            "http://qbittorrent:8080",
+            "",
+            "",
+            api_key="qbt_example",
+            auth_method="api_key",
+            transport=httpx.MockTransport(handler),
+        )
+
+        self.assertEqual(await client.torrents(), [])
 
 
 class FakeTmdb:

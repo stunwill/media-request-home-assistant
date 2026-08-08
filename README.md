@@ -20,7 +20,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-MediaHub is in active early development. Version `0.6.0-dev` adds secure external authentication and user management to the complete movie workflow. Television discovery and Sonarr submission remain planned.
+MediaHub is in active early development. Version `0.6.1-dev` fixes qBittorrent authentication while retaining secure external authentication and user management. Television discovery and Sonarr submission remain planned.
 
 ## Movie request workflow
 
@@ -46,6 +46,8 @@ Configure credentials through the MediaHub setup wizard or Home Assistant app op
 Open MediaHub from the Home Assistant sidebar as an administrator. The setup wizard uses the Supervisor API to detect installed Prowlarr, Radarr, Sonarr, and qBittorrent apps and proposes their internal Home Assistant URLs. TMDb remains an external metadata service and requires its own API key.
 
 Credentials entered in the wizard are stored in MediaHub's private `/data/mediahub-settings.json` file with owner-only permissions. Existing Home Assistant app options remain supported and act as base configuration, while wizard values override only the fields saved through MediaHub. Setup responses expose only URLs, usernames, and boolean credential-present flags.
+
+qBittorrent can use either its Web UI username and password or a qBittorrent 5.2+ API key. Password authentication sends qBittorrent's required matching `Origin` and `Referer` headers and verifies the authenticated application-version endpoint instead of relying on one exact login response body. API keys use the documented bearer-token header and are preferred when available.
 
 The discovery API requires the `SUPERVISOR_TOKEN` supplied by Home Assistant. When MediaHub runs outside Home Assistant for development, discovery reports itself unavailable without preventing manual configuration.
 

@@ -49,7 +49,7 @@ class SupervisorDiscovery:
                 headers={
                     "Authorization": f"Bearer {self.token}",
                     "Accept": "application/json",
-                    "User-Agent": "MediaHub/0.4",
+                    "User-Agent": "MediaHub/0.6.1",
                 },
             ) as client:
                 response = await client.get("/addons")
