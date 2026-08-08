@@ -1,5 +1,5 @@
 name: MediaHub
-version: "0.6.0-dev"
+version: "0.6.1-dev"
 slug: mediahub
 description: Family-friendly movie and TV request management for Home Assistant
 url: https://github.com/stunwill/media-request-home-assistant
@@ -42,6 +42,8 @@ options:
     sonarr_url: ""
     sonarr_api_key: ""
     qbittorrent_url: ""
+    qbittorrent_auth_method: password
+    qbittorrent_api_key: ""
     qbittorrent_username: ""
     qbittorrent_password: ""
 schema:
@@ -63,5 +65,7 @@ schema:
     sonarr_url: str
     sonarr_api_key: password
     qbittorrent_url: str
+    qbittorrent_auth_method: list(password|api_key)
+    qbittorrent_api_key: password
     qbittorrent_username: str
     qbittorrent_password: password

@@ -84,6 +84,8 @@ class SettingsTests(unittest.TestCase):
                     "radarr_api_key": "radarr-secret",
                     "sonarr_url": "http://user:embedded-secret@sonarr:8989",
                     "qbittorrent_username": "mediahub",
+                    "qbittorrent_auth_method": "api_key",
+                    "qbittorrent_api_key": "qbt_secret",
                     "qbittorrent_password": "password-secret",
                 }
             }
@@ -92,10 +94,13 @@ class SettingsTests(unittest.TestCase):
         self.assertTrue(public["tmdb"]["api_key_set"])
         self.assertTrue(public["radarr"]["api_key_set"])
         self.assertTrue(public["qbittorrent"]["password_set"])
+        self.assertTrue(public["qbittorrent"]["api_key_set"])
+        self.assertEqual(public["qbittorrent"]["auth_method"], "api_key")
         self.assertEqual(public["sonarr"]["url"], "")
         self.assertNotIn("tmdb-secret", str(public))
         self.assertNotIn("radarr-secret", str(public))
         self.assertNotIn("password-secret", str(public))
+        self.assertNotIn("qbt_secret", str(public))
         self.assertNotIn("embedded-secret", str(public))
 
     def test_service_url_validation_rejects_embedded_credentials(self) -> None:
@@ -107,6 +112,14 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "valid ID"):
                 save_integration_settings(
                     {"radarr_quality_profile_id": "not-an-id"},
+                    settings_file=Path(directory) / "settings.json",
+                )
+
+    def test_qbittorrent_authentication_method_must_be_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "authentication method"):
+                save_integration_settings(
+                    {"qbittorrent_auth_method": "unsupported"},
                     settings_file=Path(directory) / "settings.json",
                 )
 

@@ -6,6 +6,7 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- Optional qBittorrent 5.2+ API-key authentication for setup checks and download progress.
 - The supplied `MediaHub by Stu` wordmark on the main interface and external sign-in screen.
 - A matching play-mark browser icon derived from the supplied MediaHub artwork.
 - A standalone MediaHub sign-in screen for users who do not have a Home Assistant session.
@@ -36,12 +37,17 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.6.0-dev`.
+- Development version advanced to `0.6.1-dev`.
 - Home Assistant Ingress and external password authentication now run on isolated listeners sharing the same role model.
 - Ingress identity handling now uses Home Assistant's documented `X-Remote-User-*` headers.
 - Setup, discovery, integration settings, audit, and user management require a MediaHub administrator.
 - Storage and integration status require a MediaHub manager or administrator.
 - The MediaHub panel is explicitly restricted to Home Assistant administrators during setup.
+
+### Fixed
+
+- qBittorrent password authentication now sends matching `Origin` and `Referer` headers and verifies the authenticated version endpoint, avoiding false `Invalid response` failures with current qBittorrent releases and authentication-bypass responses.
+- Live qBittorrent download progress now reuses the same compatible authentication flow as the setup connection check.
 
 ## [0.1.1-dev] - 2026-08-04
 

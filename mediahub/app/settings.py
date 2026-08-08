@@ -24,6 +24,8 @@ INTEGRATION_FIELDS = {
     "sonarr_url",
     "sonarr_api_key",
     "qbittorrent_url",
+    "qbittorrent_auth_method",
+    "qbittorrent_api_key",
     "qbittorrent_username",
     "qbittorrent_password",
 }
@@ -32,6 +34,7 @@ SECRET_FIELDS = {
     "prowlarr_api_key",
     "radarr_api_key",
     "sonarr_api_key",
+    "qbittorrent_api_key",
     "qbittorrent_password",
 }
 URL_FIELDS = {
@@ -129,6 +132,11 @@ def save_integration_settings(
             if profile_id < 0:
                 raise ValueError("Radarr quality profile must be a valid ID")
             integrations[field] = profile_id
+        elif field == "qbittorrent_auth_method":
+            method = value.strip()
+            if method not in {"password", "api_key"}:
+                raise ValueError("qBittorrent authentication method is invalid")
+            integrations[field] = method
         elif field in SECRET_FIELDS and not value:
             continue
         else:
@@ -200,6 +208,8 @@ def public_integration_settings(options: dict[str, Any]) -> dict[str, dict[str, 
         },
         "qbittorrent": {
             "url": _public_url(values.get("qbittorrent_url", "")),
+            "auth_method": str(values.get("qbittorrent_auth_method", "password")),
+            "api_key_set": bool(str(values.get("qbittorrent_api_key", "")).strip()),
             "username": str(values.get("qbittorrent_username", "")),
             "password_set": bool(values.get("qbittorrent_password", "")),
         },

@@ -55,7 +55,7 @@ BRAND_ASSETS = {
     "mediahub-icon.png": ASSET_DIR / "mediahub-icon.png.b64",
 }
 
-app = FastAPI(title="MediaHub", version="0.6.0-dev")
+app = FastAPI(title="MediaHub", version="0.6.1-dev")
 SESSION_COOKIE = "mediahub_session"
 
 
@@ -98,6 +98,8 @@ IntegrationField = Literal[
     "sonarr_url",
     "sonarr_api_key",
     "qbittorrent_url",
+    "qbittorrent_auth_method",
+    "qbittorrent_api_key",
     "qbittorrent_username",
     "qbittorrent_password",
 ]
@@ -106,6 +108,7 @@ SecretField = Literal[
     "prowlarr_api_key",
     "radarr_api_key",
     "sonarr_api_key",
+    "qbittorrent_api_key",
     "qbittorrent_password",
 ]
 
