@@ -71,7 +71,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.6.1"},
+                headers={"User-Agent": "MediaHub/0.6.2"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -191,7 +191,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.1"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.2"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()

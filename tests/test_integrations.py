@@ -41,18 +41,67 @@ class IntegrationTesterTests(unittest.IsolatedAsyncioTestCase):
         result = await tester.test(IntegrationConfig(name="tmdb"))
         self.assertEqual(result, {"name": "tmdb", "status": "not_configured", "configured": False})
 
-    async def test_arr_connection_returns_sanitised_version_details(self) -> None:
+    async def assert_arr_connection(
+        self,
+        *,
+        name: str,
+        url: str,
+        expected_path: str,
+    ) -> None:
         async def handler(request: httpx.Request) -> httpx.Response:
-            self.assertEqual(request.url.path, "/api/v3/system/status")
+            self.assertEqual(request.url.path, expected_path)
             self.assertEqual(request.headers["X-Api-Key"], "secret")
-            return httpx.Response(200, json={"appName": "Prowlarr", "version": "1.2.3"})
+            return httpx.Response(200, json={"appName": name.title(), "version": "1.2.3"})
 
         tester = IntegrationTester(transport=httpx.MockTransport(handler))
         result = await tester.test(
-            IntegrationConfig(name="prowlarr", url="http://prowlarr:9696/", api_key="secret")
+            IntegrationConfig(name=name, url=url, api_key="secret")
         )
         self.assertEqual(result["status"], "connected")
-        self.assertEqual(result["details"], {"app_name": "Prowlarr", "version": "1.2.3"})
+        self.assertEqual(result["details"], {"app_name": name.title(), "version": "1.2.3"})
+        self.assertNotIn("secret", str(result))
+
+    async def test_prowlarr_connection_uses_api_v1(self) -> None:
+        await self.assert_arr_connection(
+            name="prowlarr",
+            url="http://prowlarr:9696/",
+            expected_path="/api/v1/system/status",
+        )
+
+    async def test_radarr_connection_uses_api_v3(self) -> None:
+        await self.assert_arr_connection(
+            name="radarr",
+            url="http://radarr:7878/",
+            expected_path="/api/v3/system/status",
+        )
+
+    async def test_sonarr_connection_uses_api_v3(self) -> None:
+        await self.assert_arr_connection(
+            name="sonarr",
+            url="http://sonarr:8989/",
+            expected_path="/api/v3/system/status",
+        )
+
+    async def test_prowlarr_http_error_is_sanitised(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/api/v1/system/status")
+            return httpx.Response(
+                404,
+                text="API key secret was rejected by an unknown endpoint",
+                request=request,
+            )
+
+        tester = IntegrationTester(transport=httpx.MockTransport(handler))
+        result = await tester.test(
+            IntegrationConfig(
+                name="prowlarr",
+                url="http://prowlarr:9696",
+                api_key="secret",
+            )
+        )
+
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["message"], "Service returned HTTP 404")
         self.assertNotIn("secret", str(result))
 
     async def test_authentication_failure_does_not_expose_response_body(self) -> None:

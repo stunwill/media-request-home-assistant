@@ -55,7 +55,7 @@ BRAND_ASSETS = {
     "mediahub-icon.png": ASSET_DIR / "mediahub-icon.png.b64",
 }
 
-app = FastAPI(title="MediaHub", version="0.6.1-dev")
+app = FastAPI(title="MediaHub", version="0.6.2-dev")
 SESSION_COOKIE = "mediahub_session"
 
 

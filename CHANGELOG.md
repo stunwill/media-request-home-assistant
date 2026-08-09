@@ -37,7 +37,8 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.6.1-dev`.
+- Development version advanced to `0.6.2-dev`.
+- Setup now displays sanitised per-service connection errors instead of reducing every non-authentication failure to an unexplained unavailable badge.
 - Home Assistant Ingress and external password authentication now run on isolated listeners sharing the same role model.
 - Ingress identity handling now uses Home Assistant's documented `X-Remote-User-*` headers.
 - Setup, discovery, integration settings, audit, and user management require a MediaHub administrator.
@@ -46,6 +47,8 @@ All notable MediaHub changes are documented in this file.
 
 ### Fixed
 
+- Prowlarr connection validation now uses its supported `/api/v1/system/status` endpoint instead of the Radarr and Sonarr `/api/v3/system/status` endpoint.
+- Prowlarr, Radarr, and Sonarr now have separate endpoint-contract tests so their API versions cannot be grouped incorrectly again.
 - qBittorrent password authentication now sends matching `Origin` and `Referer` headers and verifies the authenticated version endpoint, avoiding false `Invalid response` failures with current qBittorrent releases and authentication-bypass responses.
 - Live qBittorrent download progress now reuses the same compatible authentication flow as the setup connection check.
 
