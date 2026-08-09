@@ -70,6 +70,13 @@ class AuthenticationApiTests(unittest.TestCase):
         missing = self.client.get("/assets/not-a-real-logo.png")
         self.assertEqual(missing.status_code, 404)
 
+    def test_setup_page_renders_sanitised_connection_message(self) -> None:
+        page = self.client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("detail.textContent=connection.message||''", page.text)
+        self.assertIn("detail.classList.toggle('hidden',!connection.message)", page.text)
+
     def test_first_user_is_bootstrap_admin_and_later_users_are_requesters(self) -> None:
         admin = self.client.get("/api/users/me", headers=self.admin_headers)
         requester = self.client.get("/api/users/me", headers=self.requester_headers)

@@ -11,6 +11,12 @@ import httpx
 
 IntegrationName = Literal["tmdb", "prowlarr", "radarr", "sonarr", "qbittorrent"]
 
+ARR_STATUS_ENDPOINTS: dict[IntegrationName, str] = {
+    "prowlarr": "/api/v1/system/status",
+    "radarr": "/api/v3/system/status",
+    "sonarr": "/api/v3/system/status",
+}
+
 
 @dataclass(frozen=True)
 class IntegrationConfig:
@@ -39,7 +45,7 @@ def qbittorrent_headers(base_url: str, api_key: str = "") -> dict[str, str]:
     parts = urlsplit(base_url.rstrip("/"))
     origin = f"{parts.scheme}://{parts.netloc}"
     headers = {
-        "User-Agent": "MediaHub/0.6.1",
+        "User-Agent": "MediaHub/0.6.2",
         "Origin": origin,
         "Referer": f"{base_url.rstrip('/')}/",
     }
@@ -95,7 +101,7 @@ class IntegrationTester:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
                 follow_redirects=True,
-                headers={"User-Agent": "MediaHub/0.6.1"},
+                headers={"User-Agent": "MediaHub/0.6.2"},
                 transport=self.transport,
             ) as client:
                 details = await self._test_service(client, config)
@@ -132,9 +138,9 @@ class IntegrationTester:
             return {"image_base_url": payload["images"]["secure_base_url"]}
 
         base_url = config.url.rstrip("/")
-        if config.name in {"prowlarr", "radarr", "sonarr"}:
+        if config.name in ARR_STATUS_ENDPOINTS:
             response = await client.get(
-                f"{base_url}/api/v3/system/status",
+                f"{base_url}{ARR_STATUS_ENDPOINTS[config.name]}",
                 headers={"X-Api-Key": config.api_key},
             )
             response.raise_for_status()

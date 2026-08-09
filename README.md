@@ -20,7 +20,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-MediaHub is in active early development. Version `0.6.1-dev` fixes qBittorrent authentication while retaining secure external authentication and user management. Television discovery and Sonarr submission remain planned.
+MediaHub is in active early development. Version `0.6.2-dev` fixes Prowlarr connection validation and reports sanitised service errors in Setup, while retaining the qBittorrent authentication fixes, secure external authentication, and user management. Television discovery and Sonarr submission remain planned.
 
 ## Movie request workflow
 
@@ -39,7 +39,7 @@ Movie metadata and imagery are provided by TMDb. MediaHub includes the required 
 
 ## Integration connection checks
 
-Configure credentials through the MediaHub setup wizard or Home Assistant app options. MediaHub validates TMDb, Prowlarr, Radarr, Sonarr, and qBittorrent through their supported APIs at `GET /api/integrations/status`. The response reports connection state and service version information without exposing API keys, usernames, passwords, or upstream response bodies.
+Configure credentials through the MediaHub setup wizard or Home Assistant app options. MediaHub validates TMDb, Prowlarr, Radarr, Sonarr, and qBittorrent through their supported APIs at `GET /api/integrations/status`. Prowlarr validation uses its `/api/v1/system/status` endpoint, while Radarr and Sonarr use `/api/v3/system/status`. The response and Setup page report connection state, service version, and sanitised failures without exposing API keys, usernames, passwords, or upstream response bodies.
 
 ## Setup wizard
 
