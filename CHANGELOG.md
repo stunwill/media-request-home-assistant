@@ -6,6 +6,9 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- An administrator-only Download workflow diagnostic for Radarr hardlinks and qBittorrent completed, incomplete, and `radarr` category paths.
+- Automatic ten-second refresh while the Downloads view is open.
+- Append-only `movie_available` audit events when Radarr first reports an imported library file.
 - Optional qBittorrent 5.2+ API-key authentication for setup checks and download progress.
 - The supplied `MediaHub by Stu` wordmark on the main interface and external sign-in screen.
 - A matching play-mark browser icon derived from the supplied MediaHub artwork.
@@ -37,7 +40,9 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.6.2-dev`.
+- Development version advanced to `0.6.3-dev`.
+- Available movies now identify when qBittorrent is retaining the seeding data, clarifying why files are visible under both the download and library paths.
+- Completed downloads with a Radarr warning now report that the import needs attention instead of remaining on a generic waiting message.
 - Setup now displays sanitised per-service connection errors instead of reducing every non-authentication failure to an unexplained unavailable badge.
 - Home Assistant Ingress and external password authentication now run on isolated listeners sharing the same role model.
 - Ingress identity handling now uses Home Assistant's documented `X-Remote-User-*` headers.
@@ -47,6 +52,9 @@ All notable MediaHub changes are documented in this file.
 
 ### Fixed
 
+- Completed movie imports are reconciled by stable TMDb ID if Radarr's internal movie ID changes, and the stored Radarr ID is repaired automatically.
+- Download status messages now update even when the lifecycle state and percentage are unchanged.
+- Queue items at 100 percent are classified as processing while Radarr imports them, rather than as still downloading.
 - Prowlarr connection validation now uses its supported `/api/v1/system/status` endpoint instead of the Radarr and Sonarr `/api/v3/system/status` endpoint.
 - Prowlarr, Radarr, and Sonarr now have separate endpoint-contract tests so their API versions cannot be grouped incorrectly again.
 - qBittorrent password authentication now sends matching `Origin` and `Referer` headers and verifies the authenticated version endpoint, avoiding false `Invalid response` failures with current qBittorrent releases and authentication-bypass responses.

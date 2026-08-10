@@ -10,7 +10,12 @@ import httpx
 from fastapi.testclient import TestClient
 
 from mediahub.app import main
-from mediahub.app.media_services import QBittorrentClient, RadarrClient, TmdbClient
+from mediahub.app.media_services import (
+    QBittorrentClient,
+    RadarrClient,
+    TmdbClient,
+    analyse_download_workflow,
+)
 
 
 def headers() -> dict[str, str]:
@@ -107,6 +112,28 @@ class RadarrClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen_post["qualityProfileId"], 4)
         self.assertFalse(seen_post["addOptions"]["searchForMovie"])
 
+    async def test_download_settings_include_selected_library_and_hardlinks(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/v3/rootfolder":
+                return httpx.Response(200, json=[{"path": "/media/Movies", "freeSpace": 1000}])
+            if request.url.path == "/api/v3/qualityprofile":
+                return httpx.Response(200, json=[{"id": 4, "name": "HD-1080p"}])
+            if request.url.path == "/api/v3/config/mediamanagement":
+                return httpx.Response(200, json={"copyUsingHardlinks": True})
+            self.fail(f"Unexpected Radarr request: {request.method} {request.url}")
+
+        client = RadarrClient(
+            "http://radarr:7878",
+            "secret",
+            root_folder_path="/media/Movies",
+            transport=httpx.MockTransport(handler),
+        )
+
+        self.assertEqual(
+            await client.download_settings(),
+            {"library_path": "/media/Movies", "hardlinks_enabled": True},
+        )
+
     def test_release_response_is_sanitised_and_useful(self) -> None:
         result = RadarrClient.normalise_release(
             {
@@ -190,6 +217,95 @@ class QBittorrentClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(await client.torrents(), [])
 
+    async def test_download_settings_return_only_safe_path_fields(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/v2/app/version":
+                return httpx.Response(200, text="v5.2.0")
+            if request.url.path == "/api/v2/app/preferences":
+                return httpx.Response(
+                    200,
+                    json={
+                        "save_path": "/media/completed",
+                        "temp_path_enabled": True,
+                        "temp_path": "/media/incomplete",
+                        "web_ui_username": "must-not-leak",
+                    },
+                )
+            if request.url.path == "/api/v2/torrents/categories":
+                return httpx.Response(
+                    200,
+                    json={"radarr": {"name": "radarr", "savePath": "/media/completed/radarr"}},
+                )
+            self.fail(f"Unexpected qBittorrent request: {request.url}")
+
+        client = QBittorrentClient(
+            "http://qbittorrent:8080",
+            "",
+            "",
+            api_key="qbt_example",
+            auth_method="api_key",
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.download_settings()
+
+        self.assertEqual(
+            result,
+            {
+                "completed_path": "/media/completed",
+                "incomplete_enabled": True,
+                "incomplete_path": "/media/incomplete",
+                "radarr_category_path": "/media/completed/radarr",
+            },
+        )
+        self.assertNotIn("must-not-leak", str(result))
+
+
+class DownloadWorkflowAnalysisTests(unittest.TestCase):
+    def test_separate_paths_and_hardlinks_are_healthy(self) -> None:
+        result = analyse_download_workflow(
+            {"library_path": "/media/Movies", "hardlinks_enabled": True},
+            {
+                "completed_path": "/media/completed",
+                "incomplete_enabled": True,
+                "incomplete_path": "/media/incomplete",
+                "radarr_category_path": "radarr",
+            },
+        )
+
+        self.assertEqual(result["status"], "healthy")
+        self.assertTrue(result["hardlinks_enabled"])
+        self.assertEqual(result["radarr_category_path"], "/media/completed/radarr")
+        self.assertTrue(all(check["level"] == "ok" for check in result["checks"]))
+
+    def test_download_path_inside_library_is_unsafe(self) -> None:
+        result = analyse_download_workflow(
+            {"library_path": "/media/Movies", "hardlinks_enabled": False},
+            {
+                "completed_path": "/media/Movies/downloads",
+                "incomplete_enabled": False,
+                "incomplete_path": "",
+                "radarr_category_path": "",
+            },
+        )
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("must not be inside", str(result["checks"]))
+
+    def test_missing_library_path_requires_review(self) -> None:
+        result = analyse_download_workflow(
+            {"library_path": "", "hardlinks_enabled": True},
+            {
+                "completed_path": "/media/completed",
+                "incomplete_enabled": False,
+                "incomplete_path": "",
+                "radarr_category_path": "",
+            },
+        )
+
+        self.assertEqual(result["status"], "warning")
+        self.assertIn("Select a Radarr movie root folder", str(result["checks"]))
+
 
 class FakeTmdb:
     async def details(self, tmdb_id: int) -> dict:
@@ -201,6 +317,7 @@ class FakeRadarr:
 
     def __init__(self) -> None:
         self.grabbed = []
+        self.library_movie_id = 88
 
     async def ensure_movie(self, tmdb_id: int) -> dict:
         return {"id": 88, "tmdbId": tmdb_id, "title": "Example Movie", "hasFile": False}
@@ -216,12 +333,33 @@ class FakeRadarr:
         return []
 
     async def movies(self) -> list[dict]:
-        return [{"id": 88, "tmdbId": 123, "title": "Example Movie", "hasFile": True}]
+        return [
+            {
+                "id": self.library_movie_id,
+                "tmdbId": 123,
+                "title": "Example Movie",
+                "hasFile": True,
+            }
+        ]
+
+    async def download_settings(self) -> dict:
+        return {"library_path": "/media/Movies", "hardlinks_enabled": True}
 
 
 class FakeQbittorrent:
+    def __init__(self) -> None:
+        self.items: list[dict] = []
+
     async def torrents(self) -> list[dict]:
-        return []
+        return self.items
+
+    async def download_settings(self) -> dict:
+        return {
+            "completed_path": "/media/completed",
+            "incomplete_enabled": True,
+            "incomplete_path": "/media/incomplete",
+            "radarr_category_path": "/media/completed/radarr",
+        }
 
 
 class MovieRequestApiTests(unittest.TestCase):
@@ -244,10 +382,11 @@ class MovieRequestApiTests(unittest.TestCase):
             },
         )
         self.fake_radarr = FakeRadarr()
+        self.fake_qbittorrent = FakeQbittorrent()
         self.clients_patch = patch.object(
             main,
             "configured_clients",
-            return_value=(FakeTmdb(), self.fake_radarr, FakeQbittorrent()),
+            return_value=(FakeTmdb(), self.fake_radarr, self.fake_qbittorrent),
         )
         for active_patch in (
             self.database_patch,
@@ -286,6 +425,13 @@ class MovieRequestApiTests(unittest.TestCase):
         self.assertNotIn("info_hash", result)
         self.assertNotIn("private-indexer-guid", response.text)
 
+    def test_download_workflow_endpoint_is_healthy_for_safe_paths(self) -> None:
+        response = self.client.get("/api/setup/download-workflow", headers=headers())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "healthy")
+        self.assertEqual(response.json()["library_path"], "/media/Movies")
+
     def test_automatic_request_grabs_eligible_release_and_tracks_status(self) -> None:
         requested = self.client.post(
             "/api/movies/123/request",
@@ -302,6 +448,46 @@ class MovieRequestApiTests(unittest.TestCase):
         self.assertEqual(downloads.status_code, 200)
         self.assertEqual(downloads.json()[0]["status"], "available")
         self.assertEqual(downloads.json()[0]["progress"], 100.0)
+
+    def test_completed_import_recovers_changed_radarr_id_and_reports_seeding(self) -> None:
+        requested = self.client.post(
+            "/api/movies/123/request",
+            headers=headers(),
+            json={"maximum_size_gb": 3, "minimum_seeders": 1, "require_1080p": True},
+        )
+        self.assertEqual(requested.status_code, 200)
+        self.fake_radarr.library_movie_id = 99
+        self.fake_qbittorrent.items = [
+            {"hash": "abc123", "progress": 1.0, "state": "uploading"}
+        ]
+
+        downloads = self.client.get("/api/downloads", headers=headers())
+
+        self.assertEqual(downloads.status_code, 200)
+        result = downloads.json()[0]
+        self.assertEqual(result["status"], "available")
+        self.assertIn("retains the seeding data", result["status_message"])
+        with main.connect_db() as db:
+            row = db.execute(
+                "SELECT radarr_movie_id FROM requests WHERE id = ?",
+                (result["id"],),
+            ).fetchone()
+            audit = db.execute(
+                "SELECT action FROM audit_events WHERE request_id = ? AND action = 'movie_available'",
+                (result["id"],),
+            ).fetchone()
+        self.assertEqual(row["radarr_movie_id"], 99)
+        self.assertEqual(audit["action"], "movie_available")
+
+    def test_completed_download_with_radarr_warning_needs_attention(self) -> None:
+        status, progress, message = main._download_status(
+            {"trackedDownloadStatus": "warning"},
+            {"progress": 1.0, "state": "uploading"},
+        )
+
+        self.assertEqual(status, "processing")
+        self.assertEqual(progress, 100.0)
+        self.assertEqual(message, "Radarr import needs attention")
 
 
 class DatabaseMigrationTests(unittest.TestCase):
