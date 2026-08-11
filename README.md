@@ -9,7 +9,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 - Administrator user management, password resets, account disabling, and role assignment
 - Per-user request history and roles
 - Automatic request approval
-- TMDb movie discovery, search, posters, details, cast, ratings, and trailers
+- TMDb movie discovery, search, pagination, genre and release-year filters, posters, details, cast, ratings, and trailers
 - Automatic movie requests using 1080p, maximum-size, minimum-seeder, and Radarr acceptance rules
 - Interactive release selection with IPTorrents results supplied through Prowlarr and Radarr
 - Radarr movie creation, interactive search, and release submission
@@ -20,11 +20,11 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-MediaHub is in active early development. Version `0.6.3-dev` improves completed-import reconciliation, live download status, seeding visibility, and administrator diagnostics for Radarr hardlinks and qBittorrent paths. Television discovery and Sonarr submission remain planned.
+MediaHub is in active early development. Version `0.6.4-dev` expands the movie catalogue with incremental pagination plus genre and release-year filtering, while retaining the completed-import and hardlink diagnostics added in `0.6.3-dev`. Television discovery and Sonarr submission remain planned.
 
 ## Movie request workflow
 
-1. Browse popular, now-playing, top-rated, or upcoming movies from TMDb, or search by title.
+1. Browse popular, now-playing, top-rated, or upcoming movies from TMDb, load additional result pages, filter by genre and release-year range, or search by title.
 2. Open a movie to view its synopsis, rating, cast, runtime, and trailer.
 3. Choose **Request best release** for automatic selection, or **Choose a release** to inspect live indexer results.
 4. MediaHub adds the title to Radarr with automatic search disabled.

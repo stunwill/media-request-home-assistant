@@ -6,6 +6,9 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- Incremental **Load more movies** pagination across TMDb catalogue and search results.
+- Server-backed movie genre filtering using TMDb's current genre catalogue.
+- Release-year range filtering for movie discovery and search results.
 - An administrator-only Download workflow diagnostic for Radarr hardlinks and qBittorrent completed, incomplete, and `radarr` category paths.
 - Automatic ten-second refresh while the Downloads view is open.
 - Append-only `movie_available` audit events when Radarr first reports an imported library file.
@@ -40,7 +43,8 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.6.3-dev`.
+- Development version advanced to `0.6.4-dev`.
+- Browse results now retain responsive rendering while progressively appending additional TMDb pages.
 - Available movies now identify when qBittorrent is retaining the seeding data, clarifying why files are visible under both the download and library paths.
 - Completed downloads with a Radarr warning now report that the import needs attention instead of remaining on a generic waiting message.
 - Setup now displays sanitised per-service connection errors instead of reducing every non-authentication failure to an unexplained unavailable badge.
