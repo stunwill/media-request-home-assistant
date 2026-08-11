@@ -74,7 +74,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.6.4"},
+                headers={"User-Agent": "MediaHub/0.6.5"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -100,12 +100,18 @@ class TmdbClient:
         genre_id: int | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
+        rating_from: float | None = None,
+        rating_to: float | None = None,
     ) -> dict[str, Any]:
         page = max(1, min(page, 500))
         if year_from and year_to and year_from > year_to:
             raise MediaServiceError("Release year range is invalid", status_code=422)
+        if rating_from and rating_to and rating_from > rating_to:
+            raise MediaServiceError("Rating range is invalid", status_code=422)
 
-        filters_applied = bool(genre_id or year_from or year_to)
+        filters_applied = bool(
+            genre_id or year_from or year_to or rating_from or rating_to
+        )
         post_filtered_search = False
         if query.strip():
             params: dict[str, Any] = {
@@ -136,6 +142,10 @@ class TmdbClient:
                 params["vote_count.gte"] = 250
             if genre_id:
                 params["with_genres"] = genre_id
+            if rating_from:
+                params["vote_average.gte"] = rating_from
+            if rating_to:
+                params["vote_average.lte"] = rating_to
 
             earliest = date(year_from, 1, 1) if year_from else None
             latest = date(year_to, 12, 31) if year_to else None
@@ -186,6 +196,8 @@ class TmdbClient:
                     not year_to
                     or (str(movie["year"] or "").isdigit() and int(movie["year"]) <= year_to)
                 )
+                and (not rating_from or movie["rating"] >= rating_from)
+                and (not rating_to or movie["rating"] <= rating_to)
             ]
         return {
             "page": int(payload.get("page") or page),
@@ -285,7 +297,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.4"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.5"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()

@@ -84,8 +84,32 @@ class AuthenticationApiTests(unittest.TestCase):
         self.assertIn('id="genre-filter"', page.text)
         self.assertIn('id="year-from"', page.text)
         self.assertIn('id="year-to"', page.text)
+        self.assertIn('id="rating-from"', page.text)
+        self.assertIn('id="rating-to"', page.text)
         self.assertIn('id="load-more"', page.text)
         self.assertIn("catalog/genres", page.text)
+
+    def test_release_picker_includes_720p_and_1080p_quality_modes(self) -> None:
+        page = self.client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('id="quality-mode"', page.text)
+        self.assertIn('value="720p_and_1080p"', page.text)
+        self.assertIn('value="1080p_only"', page.text)
+        self.assertIn('value="720p_only"', page.text)
+
+    def test_catalogue_rating_filter_rejects_values_outside_one_to_ten(self) -> None:
+        too_low = self.client.get(
+            "/api/catalog/movies?rating_from=0.9",
+            headers=self.admin_headers,
+        )
+        too_high = self.client.get(
+            "/api/catalog/movies?rating_to=10.1",
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(too_low.status_code, 422)
+        self.assertEqual(too_high.status_code, 422)
 
     def test_first_user_is_bootstrap_admin_and_later_users_are_requesters(self) -> None:
         admin = self.client.get("/api/users/me", headers=self.admin_headers)
