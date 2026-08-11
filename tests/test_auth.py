@@ -77,6 +77,16 @@ class AuthenticationApiTests(unittest.TestCase):
         self.assertIn("detail.textContent=connection.message||''", page.text)
         self.assertIn("detail.classList.toggle('hidden',!connection.message)", page.text)
 
+    def test_browse_page_includes_catalogue_filters_and_pagination(self) -> None:
+        page = self.client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('id="genre-filter"', page.text)
+        self.assertIn('id="year-from"', page.text)
+        self.assertIn('id="year-to"', page.text)
+        self.assertIn('id="load-more"', page.text)
+        self.assertIn("catalog/genres", page.text)
+
     def test_first_user_is_bootstrap_admin_and_later_users_are_requesters(self) -> None:
         admin = self.client.get("/api/users/me", headers=self.admin_headers)
         requester = self.client.get("/api/users/me", headers=self.requester_headers)

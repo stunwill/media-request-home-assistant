@@ -59,7 +59,7 @@ BRAND_ASSETS = {
     "mediahub-icon.png": ASSET_DIR / "mediahub-icon.png.b64",
 }
 
-app = FastAPI(title="MediaHub", version="0.6.3-dev")
+app = FastAPI(title="MediaHub", version="0.6.4-dev")
 SESSION_COOKIE = "mediahub_session"
 
 
@@ -679,10 +679,29 @@ async def movie_catalogue(
     query: str = Query(default="", max_length=200),
     page: int = Query(default=1, ge=1, le=500),
     collection: Literal["popular", "top_rated", "now_playing", "upcoming"] = "popular",
+    genre_id: int | None = Query(default=None, ge=1),
+    year_from: int | None = Query(default=None, ge=1874, le=2100),
+    year_to: int | None = Query(default=None, ge=1874, le=2100),
 ) -> dict:
     tmdb, _, _ = configured_clients(load_options())
     try:
-        return await tmdb.catalogue(query=query, page=page, collection=collection)
+        return await tmdb.catalogue(
+            query=query,
+            page=page,
+            collection=collection,
+            genre_id=genre_id,
+            year_from=year_from,
+            year_to=year_to,
+        )
+    except MediaServiceError as error:
+        raise service_http_error(error) from error
+
+
+@app.get("/api/catalog/genres")
+async def movie_genres(_: CurrentUser) -> dict:
+    tmdb, _, _ = configured_clients(load_options())
+    try:
+        return await tmdb.genres()
     except MediaServiceError as error:
         raise service_http_error(error) from error
 

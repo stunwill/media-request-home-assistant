@@ -81,6 +81,59 @@ class TmdbClientTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("secret", str(result))
 
+    async def test_catalogue_uses_discover_for_genre_and_year_filters(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/3/discover/movie")
+            self.assertEqual(request.url.params["with_genres"], "18")
+            self.assertEqual(request.url.params["primary_release_date.gte"], "1990-01-01")
+            self.assertEqual(request.url.params["primary_release_date.lte"], "1999-12-31")
+            self.assertEqual(request.url.params["sort_by"], "popularity.desc")
+            return httpx.Response(
+                200,
+                json={
+                    "page": 2,
+                    "total_pages": 7,
+                    "total_results": 121,
+                    "results": [
+                        {
+                            "id": 456,
+                            "title": "Filtered Movie",
+                            "release_date": "1995-03-10",
+                            "genre_ids": [18],
+                        }
+                    ],
+                },
+            )
+
+        client = TmdbClient("secret", transport=httpx.MockTransport(handler))
+        result = await client.catalogue(
+            page=2,
+            genre_id=18,
+            year_from=1990,
+            year_to=1999,
+        )
+
+        self.assertEqual(result["page"], 2)
+        self.assertEqual(result["total_pages"], 7)
+        self.assertEqual(result["movies"][0]["title"], "Filtered Movie")
+        self.assertTrue(result["filters_applied"])
+
+    async def test_genres_are_normalised_and_sorted(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/3/genre/movie/list")
+            return httpx.Response(
+                200,
+                json={"genres": [{"id": 35, "name": "Comedy"}, {"id": 28, "name": "Action"}]},
+            )
+
+        client = TmdbClient("secret", transport=httpx.MockTransport(handler))
+        result = await client.genres()
+
+        self.assertEqual(
+            result,
+            {"genres": [{"id": 28, "name": "Action"}, {"id": 35, "name": "Comedy"}]},
+        )
+
 
 class RadarrClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_new_movie_is_added_without_automatic_search(self) -> None:

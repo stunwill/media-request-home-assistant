@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import posixpath
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -73,7 +74,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.6.3"},
+                headers={"User-Agent": "MediaHub/0.6.4"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -90,13 +91,78 @@ class TmdbClient:
             raise MediaServiceError("TMDb returned an invalid response")
         return payload
 
-    async def catalogue(self, *, query: str = "", page: int = 1, collection: str = "popular") -> dict[str, Any]:
+    async def catalogue(
+        self,
+        *,
+        query: str = "",
+        page: int = 1,
+        collection: str = "popular",
+        genre_id: int | None = None,
+        year_from: int | None = None,
+        year_to: int | None = None,
+    ) -> dict[str, Any]:
         page = max(1, min(page, 500))
+        if year_from and year_to and year_from > year_to:
+            raise MediaServiceError("Release year range is invalid", status_code=422)
+
+        filters_applied = bool(genre_id or year_from or year_to)
+        post_filtered_search = False
         if query.strip():
+            params: dict[str, Any] = {
+                "query": query.strip(),
+                "page": page,
+                "include_adult": "false",
+            }
+            if year_from and year_from == year_to:
+                params["primary_release_year"] = year_from
             payload = await self._get(
                 "/search/movie",
-                {"query": query.strip(), "page": page, "include_adult": "false"},
+                params,
             )
+            post_filtered_search = filters_applied
+        elif filters_applied:
+            params = {
+                "page": page,
+                "include_adult": "false",
+                "include_video": "false",
+                "sort_by": {
+                    "popular": "popularity.desc",
+                    "top_rated": "vote_average.desc",
+                    "now_playing": "popularity.desc",
+                    "upcoming": "popularity.desc",
+                }.get(collection, "popularity.desc"),
+            }
+            if collection == "top_rated":
+                params["vote_count.gte"] = 250
+            if genre_id:
+                params["with_genres"] = genre_id
+
+            earliest = date(year_from, 1, 1) if year_from else None
+            latest = date(year_to, 12, 31) if year_to else None
+            today = date.today()
+            if collection == "now_playing":
+                collection_start, collection_end = today - timedelta(days=60), today
+                earliest = max(filter(None, (earliest, collection_start)))
+                latest = min(filter(None, (latest, collection_end)))
+            elif collection == "upcoming":
+                collection_start, collection_end = today + timedelta(days=1), today + timedelta(days=365)
+                earliest = max(filter(None, (earliest, collection_start)))
+                latest = min(filter(None, (latest, collection_end)))
+
+            if earliest and latest and earliest > latest:
+                return {
+                    "page": 1,
+                    "total_pages": 1,
+                    "total_results": 0,
+                    "movies": [],
+                    "filters_applied": True,
+                    "post_filtered_search": False,
+                }
+            if earliest:
+                params["primary_release_date.gte"] = earliest.isoformat()
+            if latest:
+                params["primary_release_date.lte"] = latest.isoformat()
+            payload = await self._get("/discover/movie", params)
         else:
             endpoint = {
                 "popular": "/movie/popular",
@@ -106,12 +172,38 @@ class TmdbClient:
             }.get(collection, "/movie/popular")
             payload = await self._get(endpoint, {"page": page})
         results = payload.get("results") or []
+        movies = [normalise_movie(item) for item in results if isinstance(item, dict) and item.get("id")]
+        if post_filtered_search:
+            movies = [
+                movie
+                for movie in movies
+                if (not genre_id or genre_id in movie["genre_ids"])
+                and (
+                    not year_from
+                    or (str(movie["year"] or "").isdigit() and int(movie["year"]) >= year_from)
+                )
+                and (
+                    not year_to
+                    or (str(movie["year"] or "").isdigit() and int(movie["year"]) <= year_to)
+                )
+            ]
         return {
             "page": int(payload.get("page") or page),
             "total_pages": min(int(payload.get("total_pages") or 1), 500),
             "total_results": int(payload.get("total_results") or len(results)),
-            "movies": [normalise_movie(item) for item in results if isinstance(item, dict) and item.get("id")],
+            "movies": movies,
+            "filters_applied": filters_applied,
+            "post_filtered_search": post_filtered_search,
         }
+
+    async def genres(self) -> dict[str, list[dict[str, Any]]]:
+        payload = await self._get("/genre/movie/list")
+        genres = [
+            {"id": int(item["id"]), "name": str(item["name"])}
+            for item in payload.get("genres", [])
+            if isinstance(item, dict) and item.get("id") and item.get("name")
+        ]
+        return {"genres": sorted(genres, key=lambda item: item["name"].casefold())}
 
     async def details(self, tmdb_id: int) -> dict[str, Any]:
         payload = await self._get(
@@ -193,7 +285,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.3"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.4"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()
