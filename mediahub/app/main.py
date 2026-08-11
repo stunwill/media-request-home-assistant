@@ -39,7 +39,11 @@ from .auth import (
 )
 from .discovery import SupervisorDiscovery
 from .integrations import IntegrationTester, integration_configs
-from .media_services import MediaServiceError, configured_clients
+from .media_services import (
+    MediaServiceError,
+    analyse_download_workflow,
+    configured_clients,
+)
 from .settings import (
     APP_DATA,
     load_options,
@@ -55,7 +59,7 @@ BRAND_ASSETS = {
     "mediahub-icon.png": ASSET_DIR / "mediahub-icon.png.b64",
 }
 
-app = FastAPI(title="MediaHub", version="0.6.2-dev")
+app = FastAPI(title="MediaHub", version="0.6.3-dev")
 SESSION_COOKIE = "mediahub_session"
 
 
@@ -701,6 +705,37 @@ async def radarr_options(_: Administrator) -> dict:
         raise service_http_error(error) from error
 
 
+@app.get("/api/setup/download-workflow")
+async def download_workflow(_: Administrator) -> dict:
+    _, radarr, qbittorrent = configured_clients(load_options())
+    radarr_result, qbittorrent_result = await asyncio.gather(
+        radarr.download_settings(),
+        qbittorrent.download_settings(),
+        return_exceptions=True,
+    )
+    failures = [
+        result
+        for result in (radarr_result, qbittorrent_result)
+        if isinstance(result, Exception)
+    ]
+    if failures:
+        not_configured = all(
+            isinstance(error, MediaServiceError)
+            and "not configured" in str(error).lower()
+            for error in failures
+        )
+        return {
+            "status": "not_configured" if not_configured else "unavailable",
+            "message": (
+                "Connect Radarr and qBittorrent to validate the download workflow."
+                if not_configured
+                else "Download paths could not be validated. Check the Radarr and qBittorrent connections."
+            ),
+            "checks": [],
+        }
+    return analyse_download_workflow(radarr_result, qbittorrent_result)
+
+
 async def search_movie_releases(
     tmdb_id: int,
     rules: ReleaseRules,
@@ -942,9 +977,12 @@ async def request_movie(
 
 
 def _download_status(queue_item: dict, torrent: dict | None) -> tuple[str, float, str]:
+    tracked_status = str(queue_item.get("trackedDownloadStatus") or "").lower()
     if torrent:
         progress = round(float(torrent.get("progress") or 0) * 100, 1)
         state = str(torrent.get("state") or "")
+        if tracked_status in {"warning", "error"}:
+            return "processing", progress, "Radarr import needs attention"
         if progress >= 100:
             return "processing", progress, "Download complete, waiting for Radarr import"
         return "downloading", progress, state or "Downloading"
@@ -952,7 +990,11 @@ def _download_status(queue_item: dict, torrent: dict | None) -> tuple[str, float
     size_left = float(queue_item.get("sizeleft") or queue_item.get("sizeLeft") or size)
     progress = round(max(0, min(100, (1 - size_left / size) * 100)), 1) if size else 0
     status = str(queue_item.get("status") or "queued").lower()
-    if status in {"downloading", "completed"} or progress > 0:
+    if tracked_status in {"warning", "error"}:
+        return "processing", progress, "Radarr import needs attention"
+    if status == "completed" or progress >= 100:
+        return "processing", 100.0, "Download complete, waiting for Radarr import"
+    if status == "downloading" or progress > 0:
         return "downloading", progress, str(queue_item.get("trackedDownloadStatus") or status)
     return "queued", progress, status or "Queued"
 
@@ -981,6 +1023,11 @@ async def downloads(principal: CurrentUser) -> list[dict]:
         int(item.get("id") or 0): item
         for item in movies_result
         if isinstance(item, dict) and item.get("id")
+    }
+    library_by_tmdb = {
+        int(item.get("tmdbId") or 0): item
+        for item in movies_result
+        if isinstance(item, dict) and item.get("tmdbId")
     }
     torrents = [] if isinstance(torrents_result, Exception) else torrents_result
     torrent_by_hash = {
@@ -1011,8 +1058,23 @@ async def downloads(principal: CurrentUser) -> list[dict]:
             radarr_movie_id = int(item.get("radarr_movie_id") or 0)
             queue_item = queue_by_movie.get(radarr_movie_id)
             library_movie = library_by_movie.get(radarr_movie_id)
+            try:
+                tmdb_id = int(item.get("external_id") or 0)
+            except (TypeError, ValueError):
+                tmdb_id = 0
+            if not library_movie and tmdb_id:
+                library_movie = library_by_tmdb.get(tmdb_id)
+            resolved_radarr_movie_id = int(
+                (library_movie or {}).get("id") or radarr_movie_id
+            )
+            torrent = torrent_by_hash.get(str(item.get("download_id") or "").lower())
             if library_movie and library_movie.get("hasFile"):
-                status, progress, message = "available", 100.0, "Available in the media library"
+                message = (
+                    "Available in the media library; qBittorrent retains the seeding data"
+                    if torrent
+                    else "Available in the media library"
+                )
+                status, progress = "available", 100.0
             elif queue_item:
                 download_id = str(queue_item.get("downloadId") or item.get("download_id") or "")
                 torrent = torrent_by_hash.get(download_id.lower())
@@ -1023,16 +1085,41 @@ async def downloads(principal: CurrentUser) -> list[dict]:
                 progress = float(item.get("progress") or 0)
                 message = str(item.get("status_message") or status.replace("_", " ").title())
 
-            if status != item["status"] or progress != float(item.get("progress") or 0):
+            changed = (
+                status != item["status"]
+                or progress != float(item.get("progress") or 0)
+                or message != str(item.get("status_message") or "")
+                or resolved_radarr_movie_id != radarr_movie_id
+            )
+            if changed:
                 db.execute(
                     """
                     UPDATE requests
                     SET status = ?, progress = ?, status_message = ?, download_id = ?,
+                        radarr_movie_id = ?,
                         reserved_size_gb = CASE WHEN ? IN ('available', 'failed') THEN 0 ELSE reserved_size_gb END,
                         updated_at = ?
                     WHERE id = ?
                     """,
-                    (status, progress, message, item.get("download_id"), status, now, item["id"]),
+                    (
+                        status,
+                        progress,
+                        message,
+                        item.get("download_id"),
+                        resolved_radarr_movie_id or None,
+                        status,
+                        now,
+                        item["id"],
+                    ),
+                )
+            if status == "available" and item["status"] != "available":
+                record_audit(
+                    db,
+                    actor_id="system",
+                    actor_name="MediaHub",
+                    action="movie_available",
+                    request_id=item["id"],
+                    details={"source": "radarr_library"},
                 )
             item.update({"status": status, "progress": progress, "status_message": message})
             results.append(public_request(item))

@@ -111,6 +111,8 @@ sequenceDiagram
 
 MediaHub deliberately does not scrape or authenticate to IPTorrents. Private tracker credentials remain in Prowlarr. Radarr release GUIDs may contain tracker-specific data, so MediaHub replaces them with random, user-bound tokens before sending release results to the browser. Tokens expire after 25 minutes and are consumed when selected.
 
+Radarr imports completed downloads into its movie root with hardlinks enabled. When the paths share a filesystem, qBittorrent keeps the download path while seeding and the Radarr library path points to the same underlying file data. MediaHub reconciles availability by Radarr movie ID and falls back to the stable TMDb ID if Radarr recreates the movie record. The Setup diagnostic reads only the path and hardlink fields required to detect unsafe library/download overlap; it never returns qBittorrent's wider preferences payload.
+
 ## Storage protection
 
 A request is accepted only when projected free space remains above the protected reserve after accounting for:

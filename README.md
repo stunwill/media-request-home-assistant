@@ -20,7 +20,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-MediaHub is in active early development. Version `0.6.2-dev` fixes Prowlarr connection validation and reports sanitised service errors in Setup, while retaining the qBittorrent authentication fixes, secure external authentication, and user management. Television discovery and Sonarr submission remain planned.
+MediaHub is in active early development. Version `0.6.3-dev` improves completed-import reconciliation, live download status, seeding visibility, and administrator diagnostics for Radarr hardlinks and qBittorrent paths. Television discovery and Sonarr submission remain planned.
 
 ## Movie request workflow
 
@@ -32,6 +32,8 @@ MediaHub is in active early development. Version `0.6.2-dev` fixes Prowlarr conn
 6. MediaHub applies the selected 1080p, size, seeder, storage, and Radarr acceptance rules.
 7. Radarr sends the approved release to qBittorrent and imports it when complete.
 8. MediaHub displays queued, downloading, processing, failed, and available status.
+
+The Downloads view refreshes automatically while it is open. After Radarr imports a movie, MediaHub shows it as available even if the item has already left Radarr's queue. When qBittorrent still retains the torrent data for seeding, MediaHub reports that state without implying that the library file is a second full copy.
 
 IPTorrents credentials, cookies, passkeys, and download URLs are never stored by MediaHub or returned to the browser. Configure the IPTorrents indexer directly in Prowlarr.
 
@@ -48,6 +50,8 @@ Open MediaHub from the Home Assistant sidebar as an administrator. The setup wiz
 Credentials entered in the wizard are stored in MediaHub's private `/data/mediahub-settings.json` file with owner-only permissions. Existing Home Assistant app options remain supported and act as base configuration, while wizard values override only the fields saved through MediaHub. Setup responses expose only URLs, usernames, and boolean credential-present flags.
 
 qBittorrent can use either its Web UI username and password or a qBittorrent 5.2+ API key. Password authentication sends qBittorrent's required matching `Origin` and `Referer` headers and verifies the authenticated application-version endpoint instead of relying on one exact login response body. API keys use the documented bearer-token header and are preferred when available.
+
+After Radarr and qBittorrent connect, Setup displays a Download workflow diagnostic. It verifies Radarr's hardlink setting and checks that qBittorrent's completed, incomplete, and `radarr` category paths are not inside the Radarr movie library. The intended design keeps downloads under `/media/completed` and `/media/incomplete`, imports organised movies into `/media/Movies`, and lets qBittorrent continue seeding the hardlinked download data.
 
 The discovery API requires the `SUPERVISOR_TOKEN` supplied by Home Assistant. When MediaHub runs outside Home Assistant for development, discovery reports itself unavailable without preventing manual configuration.
 

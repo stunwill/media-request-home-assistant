@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import posixpath
 from dataclasses import dataclass
 from typing import Any
 
@@ -71,7 +73,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.6.2"},
+                headers={"User-Agent": "MediaHub/0.6.3"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -191,7 +193,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.2"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.3"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()
@@ -226,6 +228,22 @@ class RadarrClient:
                 "root_folder_path": self.root_folder_path,
                 "quality_profile_id": self.quality_profile_id,
             },
+        }
+
+    async def download_settings(self) -> dict[str, Any]:
+        options, media_management = await asyncio.gather(
+            self.options(),
+            self._request("GET", "/api/v3/config/mediamanagement"),
+        )
+        roots = options["root_folders"]
+        selected_root = self.root_folder_path or (roots[0]["path"] if roots else "")
+        return {
+            "library_path": selected_root,
+            "hardlinks_enabled": bool(
+                media_management.get("copyUsingHardlinks")
+                if isinstance(media_management, dict)
+                else False
+            ),
         }
 
     async def _defaults(self) -> RadarrDefaults:
@@ -329,14 +347,22 @@ class QBittorrentClient:
         self.timeout = httpx.Timeout(timeout_seconds)
         self.transport = transport
 
-    async def torrents(self) -> list[dict[str, Any]]:
+    def _configured(self) -> bool:
         credentials_set = (
             bool(self.api_key)
             if self.auth_method == "api_key"
             else bool(self.username and self.password)
         )
-        if not self.url or not credentials_set:
-            return []
+        return bool(self.url and credentials_set)
+
+    async def _get_json(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        if not self._configured():
+            raise MediaServiceError("qBittorrent is not configured", status_code=503)
         try:
             api_key = self.api_key if self.auth_method == "api_key" else ""
             async with httpx.AsyncClient(
@@ -352,7 +378,7 @@ class QBittorrentClient:
                     password=self.password,
                     api_key=api_key,
                 )
-                response = await client.get("/api/v2/torrents/info", params={"sort": "added_on", "reverse": "true"})
+                response = await client.get(path, params=params)
                 response.raise_for_status()
                 payload = response.json()
         except MediaServiceError:
@@ -369,7 +395,142 @@ class QBittorrentClient:
             raise MediaServiceError(f"qBittorrent request failed with HTTP {code}") from error
         except (httpx.RequestError, ValueError) as error:
             raise MediaServiceError("qBittorrent is unavailable") from error
+        return payload
+
+    async def torrents(self) -> list[dict[str, Any]]:
+        if not self._configured():
+            return []
+        payload = await self._get_json(
+            "/api/v2/torrents/info",
+            params={"sort": "added_on", "reverse": "true"},
+        )
         return payload if isinstance(payload, list) else []
+
+    async def download_settings(self) -> dict[str, Any]:
+        preferences, categories = await asyncio.gather(
+            self._get_json("/api/v2/app/preferences"),
+            self._get_json("/api/v2/torrents/categories"),
+        )
+        preferences = preferences if isinstance(preferences, dict) else {}
+        categories = categories if isinstance(categories, dict) else {}
+        radarr = next(
+            (
+                value
+                for name, value in categories.items()
+                if str(name).strip().lower() == "radarr" and isinstance(value, dict)
+            ),
+            {},
+        )
+        return {
+            "completed_path": str(preferences.get("save_path") or ""),
+            "incomplete_enabled": bool(preferences.get("temp_path_enabled")),
+            "incomplete_path": str(preferences.get("temp_path") or ""),
+            "radarr_category_path": str(radarr.get("savePath") or ""),
+        }
+
+
+def _normalise_media_path(path: Any) -> str:
+    value = str(path or "").strip().replace("\\", "/")
+    if not value:
+        return ""
+    return posixpath.normpath(value)
+
+
+def _path_relationship(library_path: str, download_path: str) -> str:
+    library = _normalise_media_path(library_path)
+    download = _normalise_media_path(download_path)
+    if not library or not download:
+        return "unknown"
+    if library == download or download.startswith(f"{library}/"):
+        return "inside_library"
+    if library.startswith(f"{download}/"):
+        return "contains_library"
+    return "separate"
+
+
+def analyse_download_workflow(
+    radarr_settings: dict[str, Any],
+    qbittorrent_settings: dict[str, Any],
+) -> dict[str, Any]:
+    library_path = _normalise_media_path(radarr_settings.get("library_path"))
+    completed_path = _normalise_media_path(qbittorrent_settings.get("completed_path"))
+    incomplete_path = _normalise_media_path(qbittorrent_settings.get("incomplete_path"))
+    category_path = _normalise_media_path(qbittorrent_settings.get("radarr_category_path"))
+    if category_path and not category_path.startswith("/") and completed_path:
+        category_path = _normalise_media_path(posixpath.join(completed_path, category_path))
+    checks: list[dict[str, str]] = []
+
+    if not library_path:
+        checks.append(
+            {
+                "level": "warning",
+                "message": "Select a Radarr movie root folder before validating download-path separation.",
+            }
+        )
+
+    if radarr_settings.get("hardlinks_enabled"):
+        checks.append(
+            {
+                "level": "ok",
+                "message": "Radarr is configured to use hardlinks when the paths share a filesystem, avoiding duplicate data while seeding.",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "level": "warning",
+                "message": "Enable Radarr's 'Use Hardlinks instead of Copy' setting to avoid duplicate storage while seeding.",
+            }
+        )
+
+    for label, path in (
+        ("qBittorrent completed-download path", completed_path),
+        ("qBittorrent incomplete-download path", incomplete_path if qbittorrent_settings.get("incomplete_enabled") else ""),
+        ("qBittorrent radarr category path", category_path),
+    ):
+        if not path:
+            continue
+        relationship = _path_relationship(library_path, path)
+        if relationship == "unknown":
+            checks.append(
+                {
+                    "level": "warning",
+                    "message": f"{label} is {path}, but the Radarr library path is unavailable for comparison.",
+                }
+            )
+        elif relationship == "inside_library":
+            checks.append(
+                {
+                    "level": "error",
+                    "message": f"{label} ({path}) must not be inside the Radarr library ({library_path}).",
+                }
+            )
+        elif relationship == "contains_library":
+            checks.append(
+                {
+                    "level": "warning",
+                    "message": f"{label} ({path}) is broad enough to contain the Radarr library ({library_path}).",
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "level": "ok",
+                    "message": f"{label} is separate from the Radarr library: {path}.",
+                }
+            )
+
+    levels = {check["level"] for check in checks}
+    status = "error" if "error" in levels else "warning" if "warning" in levels else "healthy"
+    return {
+        "status": status,
+        "library_path": library_path,
+        "completed_path": completed_path,
+        "incomplete_path": incomplete_path if qbittorrent_settings.get("incomplete_enabled") else "",
+        "radarr_category_path": category_path,
+        "hardlinks_enabled": bool(radarr_settings.get("hardlinks_enabled")),
+        "checks": checks,
+    }
 
 
 def configured_clients(options: dict[str, Any]) -> tuple[TmdbClient, RadarrClient, QBittorrentClient]:
