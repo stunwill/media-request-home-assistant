@@ -6,6 +6,8 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- TMDb movie-rating range filtering from `1.0` to `10.0` with one-decimal input precision.
+- Selectable `720p and 1080p`, `1080p only`, and `720p only` release policies.
 - Incremental **Load more movies** pagination across TMDb catalogue and search results.
 - Server-backed movie genre filtering using TMDb's current genre catalogue.
 - Release-year range filtering for movie discovery and search results.
@@ -22,7 +24,7 @@ All notable MediaHub changes are documented in this file.
 - A dedicated external listener on port `8100` that ignores Home Assistant identity headers.
 - External HTTPS reverse-proxy and tunnel deployment documentation.
 - A responsive movie browsing dashboard with TMDb collections, search, posters, details, cast, ratings, runtime, and trailers.
-- Automatic movie requests using configurable 1080p, maximum-size, minimum-seeder, storage, and Radarr acceptance rules.
+- Automatic movie requests using configurable 720p/1080p, maximum-size, minimum-seeder, storage, and Radarr acceptance rules.
 - Interactive Radarr release search with indexer, release title, quality, size, seeders, age, freeleech flags, and rejection reasons.
 - Opaque, user-bound, short-lived release tokens so tracker GUIDs, download URLs, passkeys, and torrent hashes never reach the browser.
 - Radarr movie creation with automatic search disabled, followed by explicit release submission.
@@ -43,7 +45,9 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.6.4-dev`.
+- Development version advanced to `0.6.5-dev`.
+- The default release policy now accepts both 720p and 1080p results while continuing to respect Radarr approval, size, and seeder rules.
+- Catalogue filter state remains visible after genre options reload, and later filtered pages replace an earlier empty-result placeholder when matches are found.
 - Browse results now retain responsive rendering while progressively appending additional TMDb pages.
 - Available movies now identify when qBittorrent is retaining the seeding data, clarifying why files are visible under both the download and library paths.
 - Completed downloads with a Radarr warning now report that the import needs attention instead of remaining on a generic waiting message.

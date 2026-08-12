@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from mediahub.app import main
 from mediahub.app.media_services import (
+    MediaServiceError,
     QBittorrentClient,
     RadarrClient,
     TmdbClient,
@@ -87,6 +88,8 @@ class TmdbClientTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(request.url.params["with_genres"], "18")
             self.assertEqual(request.url.params["primary_release_date.gte"], "1990-01-01")
             self.assertEqual(request.url.params["primary_release_date.lte"], "1999-12-31")
+            self.assertEqual(request.url.params["vote_average.gte"], "6.5")
+            self.assertEqual(request.url.params["vote_average.lte"], "8.9")
             self.assertEqual(request.url.params["sort_by"], "popularity.desc")
             return httpx.Response(
                 200,
@@ -111,12 +114,45 @@ class TmdbClientTests(unittest.IsolatedAsyncioTestCase):
             genre_id=18,
             year_from=1990,
             year_to=1999,
+            rating_from=6.5,
+            rating_to=8.9,
         )
 
         self.assertEqual(result["page"], 2)
         self.assertEqual(result["total_pages"], 7)
         self.assertEqual(result["movies"][0]["title"], "Filtered Movie")
         self.assertTrue(result["filters_applied"])
+
+    async def test_catalogue_post_filters_search_results_by_rating(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.url.path, "/3/search/movie")
+            self.assertNotIn("vote_average.gte", request.url.params)
+            return httpx.Response(
+                200,
+                json={
+                    "page": 1,
+                    "total_pages": 1,
+                    "total_results": 2,
+                    "results": [
+                        {"id": 11, "title": "Included", "vote_average": 7.4},
+                        {"id": 12, "title": "Excluded", "vote_average": 5.9},
+                    ],
+                },
+            )
+
+        client = TmdbClient("secret", transport=httpx.MockTransport(handler))
+        result = await client.catalogue(query="example", rating_from=7.0, rating_to=8.0)
+
+        self.assertEqual([movie["title"] for movie in result["movies"]], ["Included"])
+        self.assertTrue(result["post_filtered_search"])
+
+    async def test_catalogue_rejects_reversed_rating_range(self) -> None:
+        client = TmdbClient("secret")
+
+        with self.assertRaises(MediaServiceError) as raised:
+            await client.catalogue(rating_from=8.1, rating_to=7.9)
+
+        self.assertEqual(raised.exception.status_code, 422)
 
     async def test_genres_are_normalised_and_sorted(self) -> None:
         async def handler(request: httpx.Request) -> httpx.Response:
@@ -467,7 +503,11 @@ class MovieRequestApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/movies/123/releases",
             headers=headers(),
-            json={"maximum_size_gb": 3, "minimum_seeders": 1, "require_1080p": True},
+            json={
+                "maximum_size_gb": 3,
+                "minimum_seeders": 1,
+                "quality_mode": "720p_and_1080p",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -477,6 +517,33 @@ class MovieRequestApiTests(unittest.TestCase):
         self.assertNotIn("guid", result)
         self.assertNotIn("info_hash", result)
         self.assertNotIn("private-indexer-guid", response.text)
+
+    def test_release_policy_accepts_720p_and_1080p_by_default(self) -> None:
+        release_720p = {**release(), "quality": "WEBDL-720p"}
+        release_2160p = {**release(), "quality": "WEBDL-2160p"}
+        rules = main.ReleaseRules(maximum_size_gb=3, minimum_seeders=1)
+
+        self.assertTrue(main.release_with_policy(release_720p, rules)["eligible"])
+        self.assertTrue(main.release_with_policy(release(), rules)["eligible"])
+        self.assertFalse(main.release_with_policy(release_2160p, rules)["eligible"])
+
+    def test_release_policy_can_select_one_hd_resolution(self) -> None:
+        release_720p = {**release(), "quality": "WEBDL-720p"}
+        only_720p = main.ReleaseRules(quality_mode="720p_only")
+        only_1080p = main.ReleaseRules(quality_mode="1080p_only")
+
+        self.assertTrue(main.release_with_policy(release_720p, only_720p)["eligible"])
+        self.assertFalse(main.release_with_policy(release(), only_720p)["eligible"])
+        self.assertFalse(main.release_with_policy(release_720p, only_1080p)["eligible"])
+
+    def test_legacy_1080p_rule_remains_supported(self) -> None:
+        release_720p = {**release(), "quality": "WEBDL-720p"}
+        rules = main.ReleaseRules(require_1080p=True)
+
+        result = main.release_with_policy(release_720p, rules)
+
+        self.assertFalse(result["eligible"])
+        self.assertIn("MediaHub requires a 1080p release", result["policy_rejections"])
 
     def test_download_workflow_endpoint_is_healthy_for_safe_paths(self) -> None:
         response = self.client.get("/api/setup/download-workflow", headers=headers())

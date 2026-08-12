@@ -45,7 +45,7 @@ def qbittorrent_headers(base_url: str, api_key: str = "") -> dict[str, str]:
     parts = urlsplit(base_url.rstrip("/"))
     origin = f"{parts.scheme}://{parts.netloc}"
     headers = {
-        "User-Agent": "MediaHub/0.6.4",
+        "User-Agent": "MediaHub/0.6.5",
         "Origin": origin,
         "Referer": f"{base_url.rstrip('/')}/",
     }
@@ -101,7 +101,7 @@ class IntegrationTester:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
                 follow_redirects=True,
-                headers={"User-Agent": "MediaHub/0.6.4"},
+                headers={"User-Agent": "MediaHub/0.6.5"},
                 transport=self.transport,
             ) as client:
                 details = await self._test_service(client, config)

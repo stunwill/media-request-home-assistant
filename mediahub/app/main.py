@@ -59,7 +59,7 @@ BRAND_ASSETS = {
     "mediahub-icon.png": ASSET_DIR / "mediahub-icon.png.b64",
 }
 
-app = FastAPI(title="MediaHub", version="0.6.4-dev")
+app = FastAPI(title="MediaHub", version="0.6.5-dev")
 SESSION_COOKIE = "mediahub_session"
 
 
@@ -149,7 +149,10 @@ class LoginRequest(BaseModel):
 class ReleaseRules(BaseModel):
     maximum_size_gb: float = Field(default=3, gt=0, le=100)
     minimum_seeders: int = Field(default=1, ge=0, le=10000)
-    require_1080p: bool = True
+    quality_mode: Literal[
+        "720p_and_1080p", "1080p_only", "720p_only"
+    ] = "720p_and_1080p"
+    require_1080p: bool | None = None
 
 
 class MovieRequestCreate(ReleaseRules):
@@ -426,8 +429,15 @@ def release_with_policy(release: dict, rules: ReleaseRules) -> dict:
     quality = str(release.get("quality", "")).lower()
     size_gb = float(release.get("size_gb") or 0)
     seeders = release.get("seeders")
-    if rules.require_1080p and "1080" not in quality:
+    quality_mode = "1080p_only" if rules.require_1080p is True else rules.quality_mode
+    if quality_mode == "1080p_only" and "1080" not in quality:
         policy_rejections.append("MediaHub requires a 1080p release")
+    elif quality_mode == "720p_only" and "720" not in quality:
+        policy_rejections.append("MediaHub requires a 720p release")
+    elif quality_mode == "720p_and_1080p" and not any(
+        resolution in quality for resolution in ("720", "1080")
+    ):
+        policy_rejections.append("MediaHub requires a 720p or 1080p release")
     if not size_gb or size_gb > rules.maximum_size_gb:
         policy_rejections.append(
             f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit"
@@ -682,6 +692,8 @@ async def movie_catalogue(
     genre_id: int | None = Query(default=None, ge=1),
     year_from: int | None = Query(default=None, ge=1874, le=2100),
     year_to: int | None = Query(default=None, ge=1874, le=2100),
+    rating_from: float | None = Query(default=None, ge=1, le=10),
+    rating_to: float | None = Query(default=None, ge=1, le=10),
 ) -> dict:
     tmdb, _, _ = configured_clients(load_options())
     try:
@@ -692,6 +704,8 @@ async def movie_catalogue(
             genre_id=genre_id,
             year_from=year_from,
             year_to=year_to,
+            rating_from=rating_from,
+            rating_to=rating_to,
         )
     except MediaServiceError as error:
         raise service_http_error(error) from error
@@ -887,7 +901,7 @@ async def request_movie(
     if selected is None:
         raise HTTPException(
             status_code=409,
-            detail="No release currently meets the 1080p, size, seeder, and Radarr rules.",
+            detail="No release currently meets the selected quality, size, seeder, and Radarr rules.",
         )
 
     estimated_size_gb = max(float(selected["size_gb"]), 0.01)
