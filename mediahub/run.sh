@@ -1,13 +1,13 @@
 #!/usr/bin/with-contenv bashio
 set -e
 
-MEDIAHUB_AUTH_MODE=ingress uvicorn app.main:app \
+MEDIAHUB_AUTH_MODE=ingress uvicorn app.enhanced_main:app \
   --host 0.0.0.0 \
   --port 8099 \
   --no-proxy-headers &
 ingress_pid=$!
 
-MEDIAHUB_AUTH_MODE=external uvicorn app.main:app \
+MEDIAHUB_AUTH_MODE=external uvicorn app.enhanced_main:app \
   --host 0.0.0.0 \
   --port 8100 \
   --no-proxy-headers &
