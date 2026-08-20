@@ -74,7 +74,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.6.5"},
+                headers={"User-Agent": "MediaHub/0.6.6"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -90,6 +90,37 @@ class TmdbClient:
         if not isinstance(payload, dict):
             raise MediaServiceError("TMDb returned an invalid response")
         return payload
+
+    async def _search_actor_movies(self, query: str, page: int) -> dict[str, Any] | None:
+        people = await self._get(
+            "/search/person",
+            {"query": query.strip(), "page": 1, "include_adult": "false"},
+        )
+        candidates = [
+            item
+            for item in (people.get("results") or [])
+            if isinstance(item, dict) and item.get("id")
+        ]
+        if not candidates:
+            return None
+        exact = next(
+            (
+                item
+                for item in candidates
+                if str(item.get("name") or "").casefold() == query.strip().casefold()
+            ),
+            candidates[0],
+        )
+        return await self._get(
+            "/discover/movie",
+            {
+                "page": page,
+                "include_adult": "false",
+                "include_video": "false",
+                "sort_by": "popularity.desc",
+                "with_cast": int(exact["id"]),
+            },
+        )
 
     async def catalogue(
         self,
@@ -113,6 +144,7 @@ class TmdbClient:
             genre_id or year_from or year_to or rating_from or rating_to
         )
         post_filtered_search = False
+        search_mode = "movie"
         if query.strip():
             params: dict[str, Any] = {
                 "query": query.strip(),
@@ -121,10 +153,13 @@ class TmdbClient:
             }
             if year_from and year_from == year_to:
                 params["primary_release_year"] = year_from
-            payload = await self._get(
-                "/search/movie",
-                params,
-            )
+            payload = await self._get("/search/movie", params)
+            movie_results = payload.get("results") or []
+            if not movie_results:
+                actor_payload = await self._search_actor_movies(query, page)
+                if actor_payload is not None:
+                    payload = actor_payload
+                    search_mode = "actor"
             post_filtered_search = filters_applied
         elif filters_applied:
             params = {
@@ -167,6 +202,7 @@ class TmdbClient:
                     "movies": [],
                     "filters_applied": True,
                     "post_filtered_search": False,
+                    "search_mode": search_mode,
                 }
             if earliest:
                 params["primary_release_date.gte"] = earliest.isoformat()
@@ -206,6 +242,7 @@ class TmdbClient:
             "movies": movies,
             "filters_applied": filters_applied,
             "post_filtered_search": post_filtered_search,
+            "search_mode": search_mode,
         }
 
     async def genres(self) -> dict[str, list[dict[str, Any]]]:
@@ -297,7 +334,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.5"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.6"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()
@@ -519,139 +556,117 @@ class QBittorrentClient:
         categories = categories if isinstance(categories, dict) else {}
         radarr = next(
             (
-                value
-                for name, value in categories.items()
-                if str(name).strip().lower() == "radarr" and isinstance(value, dict)
+                item
+                for item in categories.values()
+                if isinstance(item, dict) and str(item.get("name") or "").lower() == "radarr"
             ),
             {},
         )
+        completed_path = str(preferences.get("save_path") or "")
+        category_path = str(radarr.get("savePath") or "") if isinstance(radarr, dict) else ""
+        if category_path and not posixpath.isabs(category_path):
+            category_path = posixpath.join(completed_path, category_path)
         return {
-            "completed_path": str(preferences.get("save_path") or ""),
+            "completed_path": completed_path,
             "incomplete_enabled": bool(preferences.get("temp_path_enabled")),
             "incomplete_path": str(preferences.get("temp_path") or ""),
-            "radarr_category_path": str(radarr.get("savePath") or ""),
+            "radarr_category_path": category_path,
         }
 
 
-def _normalise_media_path(path: Any) -> str:
-    value = str(path or "").strip().replace("\\", "/")
-    if not value:
-        return ""
-    return posixpath.normpath(value)
+def _normalise_path(path: str) -> str:
+    value = posixpath.normpath(str(path or "").strip())
+    return "" if value in {"", "."} else value
 
 
-def _path_relationship(library_path: str, download_path: str) -> str:
-    library = _normalise_media_path(library_path)
-    download = _normalise_media_path(download_path)
-    if not library or not download:
-        return "unknown"
-    if library == download or download.startswith(f"{library}/"):
-        return "inside_library"
-    if library.startswith(f"{download}/"):
-        return "contains_library"
-    return "separate"
+def _inside(child: str, parent: str) -> bool:
+    child_path, parent_path = _normalise_path(child), _normalise_path(parent)
+    return bool(
+        child_path
+        and parent_path
+        and child_path != parent_path
+        and child_path.startswith(parent_path.rstrip("/") + "/")
+    )
 
 
-def analyse_download_workflow(
-    radarr_settings: dict[str, Any],
-    qbittorrent_settings: dict[str, Any],
-) -> dict[str, Any]:
-    library_path = _normalise_media_path(radarr_settings.get("library_path"))
-    completed_path = _normalise_media_path(qbittorrent_settings.get("completed_path"))
-    incomplete_path = _normalise_media_path(qbittorrent_settings.get("incomplete_path"))
-    category_path = _normalise_media_path(qbittorrent_settings.get("radarr_category_path"))
-    if category_path and not category_path.startswith("/") and completed_path:
-        category_path = _normalise_media_path(posixpath.join(completed_path, category_path))
+def analyse_download_workflow(radarr: dict[str, Any], qbittorrent: dict[str, Any]) -> dict[str, Any]:
+    library = _normalise_path(str(radarr.get("library_path") or ""))
+    completed = _normalise_path(str(qbittorrent.get("completed_path") or ""))
+    incomplete = _normalise_path(str(qbittorrent.get("incomplete_path") or ""))
+    category = _normalise_path(str(qbittorrent.get("radarr_category_path") or ""))
+    hardlinks = bool(radarr.get("hardlinks_enabled"))
+    incomplete_enabled = bool(qbittorrent.get("incomplete_enabled"))
     checks: list[dict[str, str]] = []
 
-    if not library_path:
-        checks.append(
-            {
-                "level": "warning",
-                "message": "Select a Radarr movie root folder before validating download-path separation.",
-            }
-        )
+    if not library:
+        checks.append({"level": "warning", "message": "Radarr library path could not be determined."})
+    if not completed:
+        checks.append({"level": "warning", "message": "qBittorrent completed path could not be determined."})
+    if library and completed and (_inside(completed, library) or completed == library):
+        checks.append({
+            "level": "error",
+            "message": "qBittorrent's completed download path must not be inside the Radarr movie library.",
+        })
+    if library and category and (_inside(category, library) or category == library):
+        checks.append({
+            "level": "error",
+            "message": "The qBittorrent Radarr category path must not be inside the Radarr movie library.",
+        })
+    if incomplete_enabled and incomplete and library and (_inside(incomplete, library) or incomplete == library):
+        checks.append({
+            "level": "error",
+            "message": "qBittorrent's incomplete download path must not be inside the Radarr movie library.",
+        })
+    if library and completed and library != completed and not hardlinks:
+        checks.append({
+            "level": "warning",
+            "message": "Radarr hardlinks are disabled, so imported movies may consume a second copy of the download data.",
+        })
+    if library and completed and library != completed and hardlinks:
+        checks.append({
+            "level": "ok",
+            "message": "Radarr uses a separate library path and hardlinks are enabled, allowing seeding data to remain in qBittorrent without duplicating movie data on the same filesystem.",
+        })
+    if category:
+        checks.append({"level": "ok", "message": f"Radarr category downloads resolve to {category}."})
+    if incomplete_enabled and incomplete:
+        checks.append({"level": "ok", "message": f"qBittorrent incomplete downloads use {incomplete}."})
 
-    if radarr_settings.get("hardlinks_enabled"):
-        checks.append(
-            {
-                "level": "ok",
-                "message": "Radarr is configured to use hardlinks when the paths share a filesystem, avoiding duplicate data while seeding.",
-            }
-        )
-    else:
-        checks.append(
-            {
-                "level": "warning",
-                "message": "Enable Radarr's 'Use Hardlinks instead of Copy' setting to avoid duplicate storage while seeding.",
-            }
-        )
-
-    for label, path in (
-        ("qBittorrent completed-download path", completed_path),
-        ("qBittorrent incomplete-download path", incomplete_path if qbittorrent_settings.get("incomplete_enabled") else ""),
-        ("qBittorrent radarr category path", category_path),
-    ):
-        if not path:
-            continue
-        relationship = _path_relationship(library_path, path)
-        if relationship == "unknown":
-            checks.append(
-                {
-                    "level": "warning",
-                    "message": f"{label} is {path}, but the Radarr library path is unavailable for comparison.",
-                }
-            )
-        elif relationship == "inside_library":
-            checks.append(
-                {
-                    "level": "error",
-                    "message": f"{label} ({path}) must not be inside the Radarr library ({library_path}).",
-                }
-            )
-        elif relationship == "contains_library":
-            checks.append(
-                {
-                    "level": "warning",
-                    "message": f"{label} ({path}) is broad enough to contain the Radarr library ({library_path}).",
-                }
-            )
-        else:
-            checks.append(
-                {
-                    "level": "ok",
-                    "message": f"{label} is separate from the Radarr library: {path}.",
-                }
-            )
-
-    levels = {check["level"] for check in checks}
-    status = "error" if "error" in levels else "warning" if "warning" in levels else "healthy"
+    level_order = {"ok": 0, "warning": 1, "error": 2}
+    worst = max((level_order[check["level"]] for check in checks), default=1)
+    status = {0: "healthy", 1: "warning", 2: "error"}[worst]
+    message = {
+        "healthy": "Download and library paths are separated safely.",
+        "warning": "The download workflow works, but one or more settings should be reviewed.",
+        "error": "The download workflow is unsafe and should be corrected before more movies are requested.",
+    }[status]
     return {
         "status": status,
-        "library_path": library_path,
-        "completed_path": completed_path,
-        "incomplete_path": incomplete_path if qbittorrent_settings.get("incomplete_enabled") else "",
-        "radarr_category_path": category_path,
-        "hardlinks_enabled": bool(radarr_settings.get("hardlinks_enabled")),
+        "message": message,
+        "library_path": library,
+        "completed_path": completed,
+        "incomplete_path": incomplete,
+        "radarr_category_path": category,
+        "hardlinks_enabled": hardlinks,
         "checks": checks,
     }
 
 
 def configured_clients(options: dict[str, Any]) -> tuple[TmdbClient, RadarrClient, QBittorrentClient]:
-    values = options.get("integrations", {})
+    integrations = options.get("integrations", {}) if isinstance(options, dict) else {}
     return (
-        TmdbClient(str(values.get("tmdb_api_key", ""))),
+        TmdbClient(str(integrations.get("tmdb_api_key") or "")),
         RadarrClient(
-            str(values.get("radarr_url", "")),
-            str(values.get("radarr_api_key", "")),
-            root_folder_path=str(values.get("radarr_root_folder_path", "")),
-            quality_profile_id=int(values.get("radarr_quality_profile_id") or 0),
+            str(integrations.get("radarr_url") or ""),
+            str(integrations.get("radarr_api_key") or ""),
+            root_folder_path=str(integrations.get("radarr_root_folder_path") or ""),
+            quality_profile_id=int(integrations.get("radarr_quality_profile_id") or 0),
         ),
         QBittorrentClient(
-            str(values.get("qbittorrent_url", "")),
-            str(values.get("qbittorrent_username", "")),
-            str(values.get("qbittorrent_password", "")),
-            api_key=str(values.get("qbittorrent_api_key", "")),
-            auth_method=str(values.get("qbittorrent_auth_method", "password")),
+            str(integrations.get("qbittorrent_url") or ""),
+            str(integrations.get("qbittorrent_username") or ""),
+            str(integrations.get("qbittorrent_password") or ""),
+            api_key=str(integrations.get("qbittorrent_api_key") or ""),
+            auth_method=str(integrations.get("qbittorrent_auth_method") or "password"),
         ),
     )
