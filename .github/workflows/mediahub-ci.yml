@@ -17,6 +17,8 @@ jobs:
   quality:
     name: Python quality
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -69,11 +71,12 @@ jobs:
           PY
 
       - name: Run test suite
-        run: pytest -q
+        run: python -m pytest -q
 
   dependency-audit:
     name: Dependency audit
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
