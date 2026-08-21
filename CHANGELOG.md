@@ -55,7 +55,7 @@ All notable MediaHub changes are documented in this file.
 ### Changed
 
 - Development version advanced to `0.6.7-dev`.
-- A movie dated later in the current calendar year is now eligible for the recent-release fallback, matching the intended "current year or within one year of release" rule.
+- Movies dated later in the current calendar year are eligible for the recent-release fallback, matching the intended current-year or within-one-year rule.
 - Radarr remains the preferred release source. MediaHub queries Prowlarr directly only when Radarr returns zero releases, rather than bypassing normal Radarr quality handling for every search.
 - Recent movies keep 720p/1080p as the preferred policy, with lower-quality fallback only when no eligible HD release exists.
 - Movie request submission now checks both MediaHub and live Radarr queue/library state before creating a request.
@@ -74,7 +74,7 @@ All notable MediaHub changes are documented in this file.
 
 ### Fixed
 
-- A zero-result Radarr release search no longer prevents MediaHub from finding a CAM/TS/telecine/screener release that is present in Prowlarr for a qualifying recent movie.
+- A zero-result Radarr release search no longer prevents MediaHub from finding a CAM/TS/telecine/screener release that is present in Prowlarr for a qualifying current-year or recently released movie.
 - Duplicate movie requests can no longer be created by repeated clicks or concurrent request attempts once the database uniqueness guard is active.
 - Existing duplicate request records no longer produce repeated movie cards in Downloads.
 - Completed movie imports are reconciled by stable TMDb ID if Radarr's internal movie ID changes, and the stored Radarr ID is repaired automatically.
@@ -89,10 +89,10 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
-- Prowlarr, Radarr, Sonarr, and qBittorrent integration status visibility.
+- Home Assistant Ingress-compatible landing page and service status display.
 
 ## [0.1.0] - 2026-08-04
 
 ### Added
 
-- Initial MediaHub Home Assistant add-on scaffolding.
+- Initial Home Assistant add-on, FastAPI, SQLite, request, audit, and storage-protection foundation.
