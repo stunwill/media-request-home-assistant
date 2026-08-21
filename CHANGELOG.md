@@ -6,13 +6,14 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- Direct Prowlarr fallback search when Radarr returns zero releases for a current-year movie or a movie released within the last 12 months. MediaHub searches the configured Prowlarr indexers by movie title and year, filters obvious title/year mismatches, maps the result back to the synced Radarr indexer, and keeps Radarr as the download/import authority.
 - Recent-release quality fallback for movies released within the last 12 months. MediaHub still prefers eligible 720p/1080p releases, but when none are available it can surface CAM, telesync, telecine, or screener candidates that still meet size, seeder, download, and non-quality rejection rules.
 - TMDb actor-name search fallback using person lookup and cast discovery.
 - A partial unique database index that prevents more than one active request for the same TMDb movie.
 - Startup reconciliation that marks older active duplicate movie requests as superseded and releases their reserved storage.
 - Radarr duplicate checks that reject a new request when the same TMDb movie is already queued or present in the Radarr library.
 - Downloads de-duplication that collapses historical duplicate request rows to the most useful status, preferring available and actively downloading records.
-- Regression tests for actor search, recent-release fallback policy, and duplicate download handling.
+- Regression tests for actor search, recent-release fallback policy, direct Prowlarr zero-result fallback, and duplicate download handling.
 - GitHub Actions CI for Python compilation, critical Ruff checks, Home Assistant add-on YAML validation, application import smoke testing, the full test suite, and dependency vulnerability auditing.
 - TMDb movie-rating range filtering from `1.0` to `10.0` with one-decimal input precision.
 - Selectable `720p and 1080p`, `1080p only`, and `720p only` release policies.
@@ -53,7 +54,9 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.6.6-dev`.
+- Development version advanced to `0.6.7-dev`.
+- A movie dated later in the current calendar year is now eligible for the recent-release fallback, matching the intended "current year or within one year of release" rule.
+- Radarr remains the preferred release source. MediaHub queries Prowlarr directly only when Radarr returns zero releases, rather than bypassing normal Radarr quality handling for every search.
 - Recent movies keep 720p/1080p as the preferred policy, with lower-quality fallback only when no eligible HD release exists.
 - Movie request submission now checks both MediaHub and live Radarr queue/library state before creating a request.
 - The Downloads view now returns one logical card per TMDb movie instead of exposing historical duplicate rows.
@@ -71,6 +74,7 @@ All notable MediaHub changes are documented in this file.
 
 ### Fixed
 
+- A zero-result Radarr release search no longer prevents MediaHub from finding a CAM/TS/telecine/screener release that is present in Prowlarr for a qualifying recent movie.
 - Duplicate movie requests can no longer be created by repeated clicks or concurrent request attempts once the database uniqueness guard is active.
 - Existing duplicate request records no longer produce repeated movie cards in Downloads.
 - Completed movie imports are reconciled by stable TMDb ID if Radarr's internal movie ID changes, and the stored Radarr ID is repaired automatically.
@@ -85,10 +89,10 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
-- Home Assistant Ingress-compatible landing page and service status display.
+- Prowlarr, Radarr, Sonarr, and qBittorrent integration status visibility.
 
 ## [0.1.0] - 2026-08-04
 
 ### Added
 
-- Initial Home Assistant add-on, FastAPI, SQLite, request, audit, and storage-protection foundation.
+- Initial MediaHub Home Assistant add-on scaffolding.
