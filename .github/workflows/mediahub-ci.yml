@@ -61,11 +61,11 @@ jobs:
           MEDIAHUB_AUTH_MODE: ingress
         run: |
           python - <<'PY'
-          from mediahub.app.runtime import app
+          from mediahub.app.authorized_expanded import app
           assert app.title == "MediaHub"
-          assert app.version
+          assert app.version == "0.6.8-dev"
           paths = {route.path for route in app.routes}
-          for required in ("/api/health", "/api/downloads", "/api/movies/{tmdb_id}/request"):
+          for required in ("/api/health", "/api/downloads", "/api/movies/{tmdb_id}/request", "/api/movies/{tmdb_id}/releases"):
               assert required in paths, f"missing route: {required}"
           print(f"MediaHub {app.version} imported successfully")
           PY
