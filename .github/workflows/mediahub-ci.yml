@@ -62,7 +62,7 @@ jobs:
           MEDIAHUB_AUTH_MODE: ingress
         run: |
           python - <<'PY'
-          from mediahub.app.release_activity import app
+          from mediahub.app.release_activity_ui import app
           assert app.title == "MediaHub"
           assert app.version == "0.6.9-dev"
           paths = {route.path for route in app.routes}
