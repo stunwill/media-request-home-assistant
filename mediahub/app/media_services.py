@@ -283,11 +283,7 @@ class TmdbClient:
     async def details(self, tmdb_id: int) -> dict[str, Any]:
         payload = await self._get(
             f"/movie/{tmdb_id}",
-            {
-                "append_to_response": (
-                    "credits,videos,external_ids,release_dates,release_dates"
-                )
-            },
+            {"append_to_response": "credits,videos,external_ids,release_dates"},
         )
         movie = normalise_movie(payload)
         regional_dates: dict[str, list[dict[str, Any]]] = {}
