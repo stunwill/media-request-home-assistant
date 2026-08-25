@@ -53,7 +53,7 @@ jobs:
           assert isinstance(data, dict), "config.yaml must contain a mapping"
           for required in ("name", "version", "slug", "arch"):
               assert required in data, f"config.yaml is missing {required}"
-          assert data["version"] == "0.8.0-dev"
+          assert data["version"] == "0.9.0-dev"
           print("config.yaml is valid")
           PY
 
@@ -62,9 +62,9 @@ jobs:
           MEDIAHUB_AUTH_MODE: ingress
         run: |
           python - <<'PY'
-          from mediahub.app.rich_details import app
+          from mediahub.app.plex_main import app
           assert app.title == "MediaHub"
-          assert app.version == "0.8.0-dev"
+          assert app.version == "0.9.0-dev"
           paths = {route.path for route in app.routes}
           for required in (
               "/api/health",
@@ -75,6 +75,7 @@ jobs:
               "/api/movies/{tmdb_id}/request",
               "/api/movies/{tmdb_id}/releases",
               "/api/movies/{tmdb_id}/watch",
+              "/api/setup/plex",
               "/api/users/{user_id}/activity",
               "/api/users/{user_id}/mediahub-login",
           ):
