@@ -6,6 +6,15 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- Release-aware movie lifecycle classification using TMDb regional release-date data, including announced, theatrical upcoming, in cinemas, digital upcoming/available, physical upcoming/available, and released/unknown states.
+- Australian regional release-date selection by default, with theatrical, digital, and physical dates treated as separate milestones.
+- Persisted **Watch for release** requests with per-user duplicate protection, shared movie-level scheduling, restart persistence, next-check timestamps, and lightweight background polling.
+- Upcoming-title movie detail UX with lifecycle status, regional theatrical messaging, separate digital-date messaging, **Watch for release** as the primary action, **Search anyway** as the manual override, and trailer access preserved.
+- Release-aware search deferral so clearly unreleased titles do not generate unnecessary automatic Radarr/Prowlarr searches.
+- Search diagnostics that distinguish expected upcoming zero-results, released-title zero-results, and cases where releases were returned but all were rejected by policy.
+- Concise rejection summaries for size, seeder, quality, Radarr and related release-policy filters while retaining detailed server logging.
+- Resident Evil (2026) regression fixtures that verify valid metadata and trailer availability do not imply downloadable media availability before the Australian theatrical date.
+- Additional lifecycle regression coverage for announced titles, future theatrical releases, movies currently in cinemas, digital and physical release milestones, regional dates, duplicate watches, multi-user watches, persisted watch state, and scheduling cadence.
 - Administrator-only per-user activity history with `GET /api/users/{user_id}/activity`, showing request and download lifecycle events without exposing credentials, tracker identifiers, torrent hashes, or internal integration data.
 - A responsive **View activity** action on the Users page with title, lifecycle status, date, time, and safe rejection context.
 - Transition-based `movie_download_started`, failure, rejection, cancellation, and superseded lifecycle audit events, guarded against duplicate entries during repeated Downloads polling.
@@ -57,38 +66,28 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.6.9-dev`.
+- Development version advanced to `0.7.0-dev`.
+- TMDb detail requests now include regional release-date records so MediaHub can distinguish metadata availability from actual media availability.
+- Existing recent-release and CAM/TS fallback behaviour now remains downstream of lifecycle awareness. MediaHub no longer treats a pre-theatrical current-year title as evidence that a low-quality release should exist.
 - Downloadable release results are always sorted ahead of rejected results. Eligible results retain quality, seeder, size, and age ranking, while rejected entries remain visible below a labelled **Other unavailable releases** section with their rejection reasons intact.
-- Movies dated later in the current calendar year are eligible for the recent-release fallback, matching the intended current-year or within-one-year rule.
-- Radarr remains the preferred release source. MediaHub queries Prowlarr directly only when Radarr returns zero releases, rather than bypassing normal Radarr quality handling for every search.
+- Movies dated later in the current calendar year remain eligible for manual recent-release fallback, but lifecycle-aware automatic behaviour defers searches before their reasonable release window.
+- Radarr remains the preferred release source. MediaHub queries Prowlarr directly only when appropriate, rather than bypassing normal Radarr quality handling for every search.
 - Recent movies keep 720p/1080p as the preferred policy, with lower-quality fallback only when no eligible HD release exists.
-- Movie request submission now checks both MediaHub and live Radarr queue/library state before creating a request.
-- The Downloads view now returns one logical card per TMDb movie instead of exposing historical duplicate rows.
-- The default release policy now accepts both 720p and 1080p results while continuing to respect Radarr approval, size, and seeder rules.
-- Catalogue filter state remains visible after genre options reload, and later filtered pages replace an earlier empty-result placeholder when matches are found.
-- Browse results now retain responsive rendering while progressively appending additional TMDb pages.
-- Available movies now identify when qBittorrent is retaining the seeding data, clarifying why files are visible under both the download and library paths.
-- Completed downloads with a Radarr warning now report that the import needs attention instead of remaining on a generic waiting message.
-- Setup now displays sanitised per-service connection errors instead of reducing every non-authentication failure to an unexplained unavailable badge.
-- Home Assistant Ingress and external password authentication now run on isolated listeners sharing the same role model.
-- Ingress identity handling now uses Home Assistant's documented `X-Remote-User-*` headers.
-- Setup, discovery, integration settings, audit, and user management require a MediaHub administrator.
-- Storage and integration status require a MediaHub manager or administrator.
-- The MediaHub panel is explicitly restricted to Home Assistant administrators during setup.
+- Movie request submission continues to check both MediaHub and live Radarr queue/library state before creating a request.
+- The Downloads view continues to return one logical card per TMDb movie instead of exposing historical duplicate rows.
+- The default release policy continues to accept both 720p and 1080p results while respecting Radarr approval, size, and seeder rules.
 
 ### Fixed
 
+- Upcoming movies no longer appear to have failed when indexers correctly return no releases before the expected release window.
+- Movie metadata or trailer availability no longer implies that a downloadable release exists.
+- Repeated automatic searching is avoided for titles that are still clearly announced or pre-theatrical.
 - Repeated Downloads refreshes do not create duplicate lifecycle activity entries for the same transition.
-- A zero-result Radarr release search no longer prevents MediaHub from finding a CAM/TS/telecine/screener release that is present in Prowlarr for a qualifying current-year or recently released movie.
-- Duplicate movie requests can no longer be created by repeated clicks or concurrent request attempts once the database uniqueness guard is active.
+- Duplicate movie requests remain protected by the existing active-request uniqueness guard.
 - Existing duplicate request records no longer produce repeated movie cards in Downloads.
 - Completed movie imports are reconciled by stable TMDb ID if Radarr's internal movie ID changes, and the stored Radarr ID is repaired automatically.
-- Download status messages now update even when the lifecycle state and percentage are unchanged.
-- Queue items at 100 percent are classified as processing while Radarr imports them, rather than as still downloading.
-- Prowlarr connection validation now uses its supported `/api/v1/system/status` endpoint instead of the Radarr and Sonarr `/api/v3/system/status` endpoint.
-- Prowlarr, Radarr, and Sonarr now have separate endpoint-contract tests so their API versions cannot be grouped incorrectly again.
-- qBittorrent password authentication now sends matching `Origin` and `Referer` headers and verifies the authenticated version endpoint, avoiding false `Invalid response` failures with current qBittorrent releases and authentication-bypass responses.
-- Live qBittorrent download progress now reuses the same compatible authentication flow as the setup connection check.
+- Prowlarr connection validation uses its supported `/api/v1/system/status` endpoint.
+- qBittorrent password authentication continues to use the compatible authenticated API flow.
 
 ## [0.1.1-dev] - 2026-08-04
 

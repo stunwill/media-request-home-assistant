@@ -53,7 +53,7 @@ jobs:
           assert isinstance(data, dict), "config.yaml must contain a mapping"
           for required in ("name", "version", "slug", "arch"):
               assert required in data, f"config.yaml is missing {required}"
-          assert data["version"] == "0.6.10-dev"
+          assert data["version"] == "0.7.0-dev"
           print("config.yaml is valid")
           PY
 
@@ -62,15 +62,17 @@ jobs:
           MEDIAHUB_AUTH_MODE: ingress
         run: |
           python - <<'PY'
-          from mediahub.app.dual_login import app
+          from mediahub.app.release_lifecycle import app
           assert app.title == "MediaHub"
-          assert app.version == "0.6.10-dev"
+          assert app.version == "0.7.0-dev"
           paths = {route.path for route in app.routes}
           for required in (
               "/api/health",
               "/api/downloads",
+              "/api/catalog/movies/{tmdb_id}",
               "/api/movies/{tmdb_id}/request",
               "/api/movies/{tmdb_id}/releases",
+              "/api/movies/{tmdb_id}/watch",
               "/api/users/{user_id}/activity",
               "/api/users/{user_id}/mediahub-login",
           ):
@@ -97,5 +99,5 @@ jobs:
         run: |
           python -m pip install --upgrade pip pip-audit
           if ! pip-audit -r mediahub/requirements.txt; then
-            echo "::warning::Known dependency vulnerabilities were detected. This remains visible in the CI log but does not block this corrective PR."
+            echo "::warning::Known dependency vulnerabilities were detected. This remains visible in the CI log but does not block this feature PR."
           fi

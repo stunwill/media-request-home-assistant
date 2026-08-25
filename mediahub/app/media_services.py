@@ -74,7 +74,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.6.6"},
+                headers={"User-Agent": "MediaHub/0.7.0"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -257,12 +257,28 @@ class TmdbClient:
     async def details(self, tmdb_id: int) -> dict[str, Any]:
         payload = await self._get(
             f"/movie/{tmdb_id}",
-            {"append_to_response": "credits,videos,external_ids"},
+            {"append_to_response": "credits,videos,external_ids,release_dates"},
         )
         movie = normalise_movie(payload)
+        regional_dates: dict[str, list[dict[str, Any]]] = {}
+        for country in (payload.get("release_dates") or {}).get("results", []):
+            if not isinstance(country, dict) or not country.get("iso_3166_1"):
+                continue
+            records: list[dict[str, Any]] = []
+            for item in country.get("release_dates") or []:
+                if not isinstance(item, dict):
+                    continue
+                records.append(
+                    {
+                        "type": int(item.get("type") or 0),
+                        "release_date": str(item.get("release_date") or ""),
+                    }
+                )
+            regional_dates[str(country["iso_3166_1"]).upper()] = records
         movie.update(
             {
                 "runtime_minutes": payload.get("runtime"),
+                "status": str(payload.get("status") or ""),
                 "genres": [
                     {"id": int(item["id"]), "name": str(item["name"])}
                     for item in payload.get("genres", [])
@@ -274,6 +290,7 @@ class TmdbClient:
                     for item in (payload.get("credits") or {}).get("cast", [])[:8]
                     if isinstance(item, dict)
                 ],
+                "release_dates": regional_dates,
             }
         )
         videos = (payload.get("videos") or {}).get("results", [])
@@ -334,7 +351,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.6.6"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.7.0"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()

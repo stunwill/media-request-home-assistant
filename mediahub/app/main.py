@@ -168,7 +168,7 @@ def utc_now() -> str:
 
 
 def connect_db() -> sqlite3.Connection:
-    APP_DATA.mkdir(parents=True, exist_ok=True)
+    DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DATABASE_FILE, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
@@ -857,7 +857,6 @@ async def request_movie(
             )
         try:
             radarr_movie = await radarr.ensure_movie(tmdb_id)
-            # Refreshing the search also refreshes Radarr's short-lived release cache.
             fresh_releases = await radarr.releases(int(radarr_movie["id"]))
         except MediaServiceError as error:
             raise service_http_error(error) from error
