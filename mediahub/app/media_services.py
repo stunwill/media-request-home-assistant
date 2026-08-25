@@ -74,7 +74,7 @@ class TmdbClient:
                 base_url="https://api.themoviedb.org/3",
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"User-Agent": "MediaHub/0.7.0"},
+                headers={"User-Agent": "MediaHub/0.8.0"},
             ) as client:
                 response = await client.get(path, params=query)
                 response.raise_for_status()
@@ -121,6 +121,32 @@ class TmdbClient:
                 "with_cast": int(exact["id"]),
             },
         )
+
+    async def actor_movies(self, person_id: int, *, page: int = 1) -> dict[str, Any]:
+        page = max(1, min(page, 500))
+        payload = await self._get(
+            "/discover/movie",
+            {
+                "page": page,
+                "include_adult": "false",
+                "include_video": "false",
+                "sort_by": "popularity.desc",
+                "with_cast": int(person_id),
+            },
+        )
+        results = payload.get("results") or []
+        return {
+            "page": int(payload.get("page") or page),
+            "total_pages": min(int(payload.get("total_pages") or 1), 500),
+            "total_results": int(payload.get("total_results") or len(results)),
+            "movies": [
+                normalise_movie(item)
+                for item in results
+                if isinstance(item, dict) and item.get("id")
+            ],
+            "person_id": int(person_id),
+            "search_mode": "actor_id",
+        }
 
     async def catalogue(
         self,
@@ -261,33 +287,63 @@ class TmdbClient:
         )
         movie = normalise_movie(payload)
         regional_dates: dict[str, list[dict[str, Any]]] = {}
+        certification = ""
         for country in (payload.get("release_dates") or {}).get("results", []):
             if not isinstance(country, dict) or not country.get("iso_3166_1"):
                 continue
+            region = str(country["iso_3166_1"]).upper()
             records: list[dict[str, Any]] = []
             for item in country.get("release_dates") or []:
                 if not isinstance(item, dict):
                     continue
-                records.append(
-                    {
-                        "type": int(item.get("type") or 0),
-                        "release_date": str(item.get("release_date") or ""),
-                    }
-                )
-            regional_dates[str(country["iso_3166_1"]).upper()] = records
+                record = {
+                    "type": int(item.get("type") or 0),
+                    "release_date": str(item.get("release_date") or ""),
+                }
+                records.append(record)
+                if region == "AU" and not certification:
+                    certification = str(item.get("certification") or "").strip()
+            regional_dates[region] = records
+        credits = payload.get("credits") or {}
+        crew = credits.get("crew") or [] if isinstance(credits, dict) else []
+        director = next(
+            (
+                {
+                    "id": int(item.get("id") or 0),
+                    "name": str(item.get("name") or ""),
+                }
+                for item in crew
+                if isinstance(item, dict) and item.get("job") == "Director"
+            ),
+            None,
+        )
         movie.update(
             {
                 "runtime_minutes": payload.get("runtime"),
                 "status": str(payload.get("status") or ""),
+                "certification": certification or None,
                 "genres": [
                     {"id": int(item["id"]), "name": str(item["name"])}
                     for item in payload.get("genres", [])
                     if isinstance(item, dict) and item.get("id") and item.get("name")
                 ],
-                "imdb_id": (payload.get("external_ids") or {}).get("imdb_id") or payload.get("imdb_id"),
+                "imdb_id": (payload.get("external_ids") or {}).get("imdb_id")
+                or payload.get("imdb_id"),
+                "external_ids": {
+                    key: value
+                    for key, value in (payload.get("external_ids") or {}).items()
+                    if key in {"imdb_id", "facebook_id", "instagram_id", "twitter_id"}
+                    and value
+                },
+                "director": director,
                 "cast": [
-                    {"name": str(item.get("name", "")), "character": str(item.get("character", ""))}
-                    for item in (payload.get("credits") or {}).get("cast", [])[:8]
+                    {
+                        "id": int(item.get("id") or 0),
+                        "name": str(item.get("name", "")),
+                        "character": str(item.get("character", "")),
+                        "profile_url": _image_url(item.get("profile_path"), "w185"),
+                    }
+                    for item in (credits.get("cast") or [])[:12]
                     if isinstance(item, dict)
                 ],
                 "release_dates": regional_dates,
@@ -305,7 +361,9 @@ class TmdbClient:
             ),
             None,
         )
-        movie["trailer_url"] = f"https://www.youtube.com/watch?v={trailer['key']}" if trailer else None
+        movie["trailer_url"] = (
+            f"https://www.youtube.com/watch?v={trailer['key']}" if trailer else None
+        )
         return movie
 
 
@@ -351,7 +409,7 @@ class RadarrClient:
                 base_url=self.url,
                 timeout=self.timeout,
                 transport=self.transport,
-                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.7.0"},
+                headers={"X-Api-Key": self.api_key, "User-Agent": "MediaHub/0.8.0"},
             ) as client:
                 response = await client.request(method, path, params=params, json=json)
                 response.raise_for_status()
