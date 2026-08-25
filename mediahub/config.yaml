@@ -1,5 +1,5 @@
 name: MediaHub
-version: "0.8.0-dev"
+version: "0.9.0-dev"
 slug: mediahub
 description: Family-friendly movie and TV request management for Home Assistant
 url: https://github.com/stunwill/media-request-home-assistant
@@ -46,6 +46,10 @@ options:
     qbittorrent_api_key: ""
     qbittorrent_username: ""
     qbittorrent_password: ""
+    plex_url: ""
+    plex_token: ""
+    plex_library_key: ""
+    plex_machine_identifier: ""
 schema:
   storage:
     media_path: str
@@ -69,3 +73,7 @@ schema:
     qbittorrent_api_key: password
     qbittorrent_username: str
     qbittorrent_password: password
+    plex_url: str
+    plex_token: password
+    plex_library_key: str
+    plex_machine_identifier: str
