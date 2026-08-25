@@ -133,10 +133,12 @@ _RICH_DETAILS_UI = r"""
   .detail-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}.section-title{font-size:.82rem;text-transform:uppercase;letter-spacing:.1em;color:#aeb8c8;font-weight:900;margin:18px 0 10px}.ratings-grid{display:flex;flex-wrap:wrap;gap:10px}.rating-card{min-width:120px;padding:11px 13px;border:1px solid var(--border);border-radius:13px;background:#0c1018;text-decoration:none;color:var(--text)}.rating-card strong{display:block;font-size:.75rem;color:var(--muted);margin-bottom:4px}.cast-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}.cast-card{border:1px solid var(--border);border-radius:13px;background:#0c1018;color:var(--text);padding:10px;text-align:left;min-height:70px}.cast-card img{width:42px;height:42px;object-fit:cover;border-radius:50%;float:left;margin-right:9px}.cast-name{font-weight:850}.cast-role{font-size:.75rem;color:var(--muted);margin-top:3px}.library-card{padding:14px;border:1px solid var(--border);border-radius:14px;background:#0c1018;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.library-card div span{display:block;color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}.modal .dialog{scroll-behavior:smooth}.close:focus,.button:focus,.cast-card:focus,.rating-card:focus{outline:2px solid var(--accent-2);outline-offset:2px}@media(max-width:760px){.cast-strip{grid-template-columns:1fr 1fr}.rating-card{flex:1 1 42%}}
 </style>
 <script>
-  let detailContext='browse';
+  let actorReturnMovie=null;
+  let actorReturnContext='browse';
+  let detailTrigger=null;
   const baseOpenMovie=typeof openMovie==='function'?openMovie:null;
   if(baseOpenMovie){
-    openMovie=async function(id){detailContext='browse';return await baseOpenMovie(id);};
+    openMovie=async function(id){detailTrigger=document.activeElement;return await baseOpenMovie(id);};
   }
 
   function richRatings(movie){
@@ -154,15 +156,30 @@ _RICH_DETAILS_UI = r"""
   function bindRichDetail(){
     document.querySelectorAll('[data-person-id]').forEach(button=>button.addEventListener('click',()=>showActorMovies(button.dataset.personId,button.dataset.personName)));
   }
+  function restoreActorMovie(){
+    if(!actorReturnMovie)return;
+    state.movie=actorReturnMovie;
+    state.movie.context=actorReturnContext;
+    actorReturnMovie=null;
+    renderDetail();
+    document.getElementById('modal').classList.remove('hidden');
+    document.getElementById('close-modal').focus();
+  }
   async function showActorMovies(personId,name){
-    if(!personId){document.getElementById('search').value=name;closeModal();loadMovies(true);return;}
+    actorReturnMovie=state.movie;actorReturnContext=state.movie?.context||'browse';
+    showView('browse');
+    if(!personId){state.query=name;document.getElementById('search').value=name;closeModal();await loadMovies();return;}
     try{
       const data=await api(`catalog/people/${personId}/movies`);
       closeModal();
       state.query='';state.collection='popular';state.movies=data.movies||[];state.page=Number(data.page||1);state.totalPages=Number(data.total_pages||1);
       document.getElementById('search').value='';
-      document.getElementById('movie-heading').textContent=`Movies with ${name}`;
-      renderMovies();
+      document.getElementById('catalogue-title').textContent=`Movies with ${name}`;
+      document.getElementById('catalogue-meta').textContent=`${Number(data.total_results||0).toLocaleString()} titles available · page ${state.page} of ${state.totalPages}.`;
+      const container=document.getElementById('movies');container.innerHTML=(data.movies||[]).map(movieCard).join('')||'<div class="empty">No movies were found for this actor.</div>';bindMovieCards(container);
+      document.getElementById('load-more-area').classList.toggle('hidden',state.page>=state.totalPages);
+      const heading=document.querySelector('#browse-view .heading');
+      if(heading&&!document.getElementById('actor-back')){heading.insertAdjacentHTML('beforeend','<button class="button" id="actor-back" type="button">Back to movie details</button>');document.getElementById('actor-back').addEventListener('click',restoreActorMovie);}
     }catch(error){toast(error.message);}
   }
   renderDetail=function(){
@@ -176,10 +193,16 @@ _RICH_DETAILS_UI = r"""
     bindRichDetail();
   };
 
+  const baseCloseModal=closeModal;
+  closeModal=function(){baseCloseModal();if(detailTrigger&&typeof detailTrigger.focus==='function'){detailTrigger.focus();detailTrigger=null;}};
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!document.getElementById('modal').classList.contains('hidden'))closeModal();});
+
   const baseRenderDownloads=typeof renderDownloads==='function'?renderDownloads:null;
   if(baseRenderDownloads){
-    renderDownloads=function(items){baseRenderDownloads(items);document.querySelectorAll('.download').forEach((card,index)=>{const item=items[index];if(!item)return;card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',`View details for ${item.title}`);const open=async()=>{try{detailContext='downloads';state.movie=await api(`downloads/${item.id}/details`);renderDetail();document.getElementById('modal').classList.remove('hidden');document.getElementById('close').focus();}catch(error){toast(error.message);}};card.addEventListener('click',open);card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});});};
+    renderDownloads=function(items){baseRenderDownloads(items);document.querySelectorAll('.download').forEach((card,index)=>{const item=items[index];if(!item)return;card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',`View details for ${item.title}`);const open=async()=>{try{detailTrigger=card;state.movie=await api(`downloads/${item.id}/details`);renderDetail();document.getElementById('modal').classList.remove('hidden');document.getElementById('close-modal').focus();}catch(error){toast(error.message);}};card.addEventListener('click',open);card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open();}});});};
   }
+  const originalLoadDownloads=loadDownloads;
+  loadDownloads=async function(silent=false){await originalLoadDownloads(silent);const dataCards=[...document.querySelectorAll('.download')];if(dataCards.length&&typeof renderDownloads==='function'){/* rich click binding is applied by the existing response renderer where available */}}
 </script>
 """
 
