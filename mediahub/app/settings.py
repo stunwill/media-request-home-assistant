@@ -28,6 +28,10 @@ INTEGRATION_FIELDS = {
     "qbittorrent_api_key",
     "qbittorrent_username",
     "qbittorrent_password",
+    "plex_url",
+    "plex_token",
+    "plex_library_key",
+    "plex_machine_identifier",
 }
 SECRET_FIELDS = {
     "tmdb_api_key",
@@ -36,12 +40,14 @@ SECRET_FIELDS = {
     "sonarr_api_key",
     "qbittorrent_api_key",
     "qbittorrent_password",
+    "plex_token",
 }
 URL_FIELDS = {
     "prowlarr_url",
     "radarr_url",
     "sonarr_url",
     "qbittorrent_url",
+    "plex_url",
 }
 
 DEFAULT_OPTIONS: dict[str, Any] = {
@@ -212,5 +218,11 @@ def public_integration_settings(options: dict[str, Any]) -> dict[str, dict[str, 
             "api_key_set": bool(str(values.get("qbittorrent_api_key", "")).strip()),
             "username": str(values.get("qbittorrent_username", "")),
             "password_set": bool(values.get("qbittorrent_password", "")),
+        },
+        "plex": {
+            "url": _public_url(values.get("plex_url", "")),
+            "token_set": bool(str(values.get("plex_token", "")).strip()),
+            "library_key": str(values.get("plex_library_key", "")),
+            "machine_identifier": str(values.get("plex_machine_identifier", "")),
         },
     }
