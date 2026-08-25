@@ -177,6 +177,7 @@ def next_check(lifecycle: dict[str, Any], *, now: datetime | None = None) -> dat
 
 
 def initialise_watch_database() -> None:
+    main.DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with main.connect_db() as db:
         db.executescript(
             """
@@ -212,10 +213,19 @@ def initialise_watch_database() -> None:
 
 
 def _watch_row(db: Any, tmdb_id: int, user_id: str) -> dict[str, Any] | None:
-    row = db.execute(
-        "SELECT * FROM movie_watches WHERE tmdb_id = ? AND requested_by_id = ? LIMIT 1",
-        (tmdb_id, user_id),
-    ).fetchone()
+    try:
+        row = db.execute(
+            "SELECT * FROM movie_watches WHERE tmdb_id = ? AND requested_by_id = ? LIMIT 1",
+            (tmdb_id, user_id),
+        ).fetchone()
+    except Exception as error:
+        if "no such table: movie_watches" not in str(error):
+            raise
+        initialise_watch_database()
+        row = db.execute(
+            "SELECT * FROM movie_watches WHERE tmdb_id = ? AND requested_by_id = ? LIMIT 1",
+            (tmdb_id, user_id),
+        ).fetchone()
     return dict(row) if row else None
 
 
@@ -244,6 +254,7 @@ async def movie_details(tmdb_id: int, principal: main.CurrentUser) -> dict[str, 
     movie["lifecycle"] = lifecycle
     movie["lifecycle_message"] = lifecycle_message(lifecycle)
     movie["digital_release_label"] = lifecycle["digital_display"] or "Digital release date not announced"
+    initialise_watch_database()
     with main.connect_db() as db:
         movie["watch"] = _watch_public(_watch_row(db, tmdb_id, principal.user_id))
     return movie
@@ -351,6 +362,7 @@ async def _run_watch_cycle() -> None:
 
 async def process_due_watches() -> None:
     now = datetime.now(UTC)
+    initialise_watch_database()
     with main.connect_db() as db:
         rows = [dict(row) for row in db.execute(
             """
@@ -429,8 +441,6 @@ async def release_lifecycle_startup() -> None:
     asyncio.create_task(_run_watch_cycle())
 
 
-# Replace the details and release-search routes while preserving lower-layer request,
-# duplicate, Radarr, Prowlarr, download and activity behaviour.
 runtime.enhanced_main._replace_route("/api/catalog/movies/{tmdb_id}", "GET", movie_details)
 runtime.enhanced_main._replace_route("/api/movies/{tmdb_id}/releases", "POST", release_search)
 app.add_api_route("/api/movies/{tmdb_id}/watch", watch_movie, methods=["POST"])
