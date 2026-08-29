@@ -42,19 +42,48 @@ jobs:
       - name: Ruff critical errors
         run: ruff check mediahub tests --select E9,F63,F7,F82
 
-      - name: Validate Home Assistant add-on YAML
+      - name: Validate repository metadata
+        env:
+          MEDIAHUB_AUTH_MODE: ingress
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           import yaml
 
-          path = Path("mediahub/config.yaml")
-          data = yaml.safe_load(path.read_text())
+          from mediahub.app.plex_main import app
+
+          manifest_path = Path("mediahub/config.yaml")
+          roadmap_path = Path("ROADMAP.md")
+          root_changelog_path = Path("CHANGELOG.md")
+          ha_changelog_path = Path("mediahub/CHANGELOG.md")
+
+          for path in (manifest_path, roadmap_path, root_changelog_path, ha_changelog_path):
+              assert path.is_file(), f"required repository metadata is missing: {path}"
+
+          data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
           assert isinstance(data, dict), "config.yaml must contain a mapping"
           for required in ("name", "version", "slug", "arch"):
               assert required in data, f"config.yaml is missing {required}"
-          assert data["version"] == "0.9.0-dev"
-          print("config.yaml is valid")
+
+          version = str(data["version"]).strip()
+          assert re.fullmatch(r"\d+\.\d+\.\d+(?:-dev)?", version), f"invalid semantic version: {version}"
+          assert app.version == version, f"application version {app.version} does not match manifest {version}"
+
+          health = {"status": "ok", "service": "MediaHub", "version": app.version}
+          assert health["version"] == version
+
+          root_changelog = root_changelog_path.read_text(encoding="utf-8")
+          ha_changelog = ha_changelog_path.read_text(encoding="utf-8")
+          roadmap = roadmap_path.read_text(encoding="utf-8")
+          release_version = version.removesuffix("-dev")
+
+          assert version in root_changelog or release_version in root_changelog, "root changelog does not include current release"
+          assert version in ha_changelog or release_version in ha_changelog, "Home Assistant changelog does not include current release"
+          assert f"v{release_version}" in roadmap, "roadmap does not include current release"
+          assert "Status:" in roadmap, "roadmap phases must include explicit Status values"
+
+          print(f"MediaHub metadata is consistent for {version}")
           PY
 
       - name: Import application smoke test
@@ -62,9 +91,13 @@ jobs:
           MEDIAHUB_AUTH_MODE: ingress
         run: |
           python - <<'PY'
+          from pathlib import Path
+          import yaml
           from mediahub.app.plex_main import app
+
+          expected = str(yaml.safe_load(Path("mediahub/config.yaml").read_text())["version"])
           assert app.title == "MediaHub"
-          assert app.version == "0.9.0-dev"
+          assert app.version == expected
           paths = {route.path for route in app.routes}
           for required in (
               "/api/health",
