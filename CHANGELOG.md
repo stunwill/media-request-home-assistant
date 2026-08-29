@@ -4,6 +4,15 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+### Repository metadata
+
+- Added root `ROADMAP.md` with explicit delivered, planned and future MediaHub phases for DevHub ingestion.
+- Added `mediahub/CHANGELOG.md` beside the Home Assistant `config.yaml` for concise add-on release notes.
+- Added CI metadata-consistency checks covering roadmap/changelog presence, semantic version format, manifest/application version agreement and current release references.
+- Documented the repository metadata contract in `README.md`.
+- Established the release metadata convention that actual published releases use semantic tags in the form `vX.Y.Z` and meaningful GitHub Release notes.
+- This maintenance update does not change MediaHub product functionality or advance the `0.9.0-dev` development version.
+
 ### Added
 
 - Optional Plex integration with private server URL/token configuration, server identity lookup, movie-library discovery, and sanitised connection status.
