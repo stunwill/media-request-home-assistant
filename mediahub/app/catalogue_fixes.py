@@ -31,12 +31,13 @@ def _english_results(payload: dict[str, Any], *, allowed_path: bool) -> dict[str
     results = payload.get("results")
     if not isinstance(results, list):
         return payload
-    filtered = [
-        item
-        for item in results
-        if isinstance(item, dict)
-        and str(item.get("original_language") or "").strip().casefold() == "en"
-    ]
+    filtered = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        language = str(item.get("original_language") or "").strip().casefold()
+        if not language or language == "en":
+            filtered.append(item)
     if len(filtered) == len(results):
         return payload
     result = dict(payload)
