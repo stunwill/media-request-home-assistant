@@ -23,6 +23,8 @@ INTEGRATION_FIELDS = {
     "radarr_quality_profile_id",
     "sonarr_url",
     "sonarr_api_key",
+    "sonarr_root_folder_path",
+    "sonarr_quality_profile_id",
     "qbittorrent_url",
     "qbittorrent_auth_method",
     "qbittorrent_api_key",
@@ -130,13 +132,15 @@ def save_integration_settings(
     for field, value in updates.items():
         if field in URL_FIELDS:
             integrations[field] = normalise_service_url(value)
-        elif field == "radarr_quality_profile_id":
+        elif field in {"radarr_quality_profile_id", "sonarr_quality_profile_id"}:
             try:
                 profile_id = int(value or 0)
             except (TypeError, ValueError) as error:
-                raise ValueError("Radarr quality profile must be a valid ID") from error
+                label = "Radarr" if field.startswith("radarr_") else "Sonarr"
+                raise ValueError(f"{label} quality profile must be a valid ID") from error
             if profile_id < 0:
-                raise ValueError("Radarr quality profile must be a valid ID")
+                label = "Radarr" if field.startswith("radarr_") else "Sonarr"
+                raise ValueError(f"{label} quality profile must be a valid ID")
             integrations[field] = profile_id
         elif field == "qbittorrent_auth_method":
             method = value.strip()
@@ -211,6 +215,8 @@ def public_integration_settings(options: dict[str, Any]) -> dict[str, dict[str, 
         "sonarr": {
             "url": _public_url(values.get("sonarr_url", "")),
             "api_key_set": bool(str(values.get("sonarr_api_key", "")).strip()),
+            "root_folder_path": str(values.get("sonarr_root_folder_path", "")),
+            "quality_profile_id": int(values.get("sonarr_quality_profile_id") or 0),
         },
         "qbittorrent": {
             "url": _public_url(values.get("qbittorrent_url", "")),
