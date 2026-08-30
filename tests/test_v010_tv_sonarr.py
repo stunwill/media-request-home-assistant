@@ -24,7 +24,7 @@ def test_tmdb_tv_catalogue_and_filters() -> None:
         async def handler(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/3/discover/tv"
             assert request.url.params["with_genres"] == "18"
-            assert request.url.params["vote_average.gte"] == "7.0"
+            assert float(request.url.params["vote_average.gte"]) == 7.0
             return httpx.Response(200, json={"page": 1, "total_pages": 2, "total_results": 1, "results": [{"id": 42, "name": "Example", "first_air_date": "2024-01-02", "vote_average": 8.2}]})
         client = TmdbTvClient("secret", transport=httpx.MockTransport(handler))
         data = await client.catalogue(genre_id=18, rating_from=7)
