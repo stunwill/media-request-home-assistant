@@ -1,5 +1,15 @@
 # MediaHub Home Assistant Changelog
 
+## 0.10.0-dev
+
+- Added separate Movies and TV Shows browsing.
+- Added TV Show discovery, search, details and season selection from TMDb.
+- Added whole-series and selected-season requests through Sonarr.
+- Added TV request/download status and episode availability to Downloads.
+- Replaced the manual **Load more Movies** button with automatic infinite scrolling for Movies and TV Shows.
+- Added Sonarr root-folder and quality-profile settings required for TV requests.
+- Existing movie, Plex, Radarr, Prowlarr and qBittorrent workflows remain intact.
+
 ## 0.9.0-dev
 
 - Added optional Plex integration and Plex movie-library awareness.
