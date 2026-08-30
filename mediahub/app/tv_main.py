@@ -179,7 +179,7 @@ async def request_tv(
                 estimated_size_gb,reserved_size_gb,status,rejection_reason,
                 progress,status_message,created_at,updated_at,sonarr_series_id,
                 requested_scope,requested_seasons_json,available_episode_count,total_episode_count
-            ) VALUES ('tv',?,?,?,?,0.01,0,'searching',NULL,0,?,?,?,?,?,0,0)
+            ) VALUES ('tv',?,?,?,?,0.01,0,'searching',NULL,0,?,?,?,?,?,?,0,0)
             """,
             (
                 show["name"], str(tmdb_id), principal.user_id, principal.display_name,
@@ -263,7 +263,7 @@ async def reconcile_tv_requests() -> None:
 
 async def downloads_with_tv(principal: main.CurrentUser) -> list[dict[str, Any]]:
     await reconcile_tv_requests()
-    movies = await runtime.downloads(principal)
+    movies = await runtime.enhanced_main.downloads(principal)
     with main.connect_db() as db:
         if principal.role in {"admin", "manager"}:
             rows = db.execute("SELECT * FROM requests WHERE media_type='tv' ORDER BY created_at DESC").fetchall()
