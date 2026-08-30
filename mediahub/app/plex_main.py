@@ -18,6 +18,8 @@ PlexIntegrationField = Literal[
     "radarr_quality_profile_id",
     "sonarr_url",
     "sonarr_api_key",
+    "sonarr_root_folder_path",
+    "sonarr_quality_profile_id",
     "qbittorrent_url",
     "qbittorrent_auth_method",
     "qbittorrent_api_key",
