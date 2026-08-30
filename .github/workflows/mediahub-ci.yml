@@ -51,7 +51,7 @@ jobs:
           import re
           import yaml
 
-          from mediahub.app.plex_main import app
+          from mediahub.app.tv_ui import app
 
           manifest_path = Path("mediahub/config.yaml")
           roadmap_path = Path("ROADMAP.md")
@@ -93,7 +93,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import yaml
-          from mediahub.app.plex_main import app
+          from mediahub.app.tv_ui import app
 
           expected = str(yaml.safe_load(Path("mediahub/config.yaml").read_text())["version"])
           assert app.title == "MediaHub"
@@ -103,11 +103,17 @@ jobs:
               "/api/health",
               "/api/downloads",
               "/api/downloads/{request_id}/details",
+              "/api/downloads/tv/{request_id}/details",
               "/api/catalog/movies/{tmdb_id}",
               "/api/catalog/people/{person_id}/movies",
+              "/api/catalog/tv",
+              "/api/catalog/tv/genres",
+              "/api/catalog/tv/{tmdb_id}",
               "/api/movies/{tmdb_id}/request",
               "/api/movies/{tmdb_id}/releases",
               "/api/movies/{tmdb_id}/watch",
+              "/api/tv/{tmdb_id}/request",
+              "/api/sonarr/options",
               "/api/setup/plex",
               "/api/users/{user_id}/activity",
               "/api/users/{user_id}/mediahub-login",

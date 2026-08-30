@@ -29,31 +29,35 @@ Status: Delivered
 
 ## v0.10.0 - Television Requests and Sonarr Workflow
 
-Status: Planned
+Status: In Progress
 
 ### Features
-- [ ] Add television discovery and TV-series detail workflows.
-- [ ] Add request lifecycle support for series, seasons and episodes.
-- [ ] Add Downloads/library visibility for TV content without weakening movie workflows.
+- [x] Add separate Movies and TV Shows Browse modes with independent catalogue state.
+- [x] Add TMDb television discovery, search, filters, rich TV-series details and season metadata.
+- [x] Add request lifecycle support for entire series and selected seasons.
+- [x] Add Downloads/library visibility for TV content without weakening movie workflows.
 
 ### Integrations
-- [ ] Use the existing Sonarr integration for real TV request submission and status reconciliation.
-- [ ] Preserve Prowlarr as the indexer boundary and qBittorrent as the download client.
+- [x] Use Sonarr for real TV series lookup, add, search and status reconciliation.
+- [x] Add Sonarr root-folder and quality-profile operational settings.
+- [x] Preserve Prowlarr as the configured indexer boundary and qBittorrent as Sonarr's downstream download client.
 - [ ] Extend Plex library awareness to TV only where stable identifiers can be matched confidently.
 
 ### UX / Quality
-- [ ] Reuse existing Browse, rich-details and Downloads interaction patterns where practical.
-- [ ] Keep movie and TV states clearly distinguishable.
-- [ ] Maintain Home Assistant ingress, external login and responsive/mobile behaviour.
+- [x] Replace manual movie catalogue pagination with automatic IntersectionObserver infinite scrolling.
+- [x] Use the same automatic infinite scrolling behavior for TV Shows.
+- [x] Prevent duplicate page requests and duplicate TMDb cards while appending results.
+- [x] Keep movie and TV states clearly distinguishable and maintain responsive/mobile behavior.
 
 ### Testing
-- [ ] Add Sonarr request and reconciliation tests.
-- [ ] Add TV duplicate-protection tests.
-- [ ] Add TV release-selection and library-state regression coverage.
-- [ ] Keep all existing movie, Radarr, Prowlarr, qBittorrent, Plex and lifecycle tests intact.
+- [x] Add TMDb TV and Sonarr request/reconciliation regression tests.
+- [x] Add TV duplicate-protection and season-scope tests.
+- [x] Add infinite-scroll and media-mode UI regression coverage.
+- [x] Keep existing movie, Radarr, Prowlarr, qBittorrent, Plex and lifecycle tests intact.
 
 ## Future
 
+- Plex TV-library matching and safe TV deep links after the TV/Sonarr workflow has proven stable.
 - Notifications for watched releases, download completion and library availability.
 - Household recommendation improvements using request/library history and explainable metadata signals.
 - Persistent metadata caching and broader performance tuning where profiling shows value.
