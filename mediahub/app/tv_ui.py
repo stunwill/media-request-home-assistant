@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import main, tv_main
+from . import catalogue_fixes, main, tv_main
 
 app = tv_main.app
 
@@ -46,6 +46,7 @@ _TV_UI = r"""
   document.querySelectorAll('#media-switch [data-media]').forEach(btn=>btn.addEventListener('click',()=>switchMedia(btn.dataset.media)));
   searchForm.addEventListener('submit',event=>{event.preventDefault();rememberControls();resetCatalogue();},{capture:true});
   ['genre-filter','year-from','year-to','rating-from','rating-to'].forEach(id=>document.getElementById(id)?.addEventListener('change',()=>{rememberControls();resetCatalogue();},{capture:true}));
+  document.getElementById('clear-filters')?.addEventListener('click',()=>{const s=currentCatalogueState();s.genre='';s.yearFrom='';s.yearTo='';s.ratingFrom='';s.ratingTo='';restoreControls();resetCatalogue();},{capture:true});
 
   const sentinel=document.getElementById('catalogue-sentinel');if(sentinel){catalogueObserver=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){const s=currentCatalogueState();if(!s.loading&&s.page<s.totalPages)loadCataloguePage(s.page+1);}}, {rootMargin:'600px 0px'});catalogueObserver.observe(sentinel);}
 
