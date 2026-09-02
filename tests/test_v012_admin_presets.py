@@ -4,7 +4,7 @@ import asyncio
 import tempfile
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 
@@ -77,17 +77,26 @@ def test_reset_presets_restores_safe_defaults() -> None:
         assert stored["tv_downloads"]["maximum_season_size_gb"] == 10.0
 
 
-def test_movie_policy_uses_admin_preset_not_request_override() -> None:
-    value = defaults()
-    value["movies"]["maximum_size_gb"] = 3.0
-    value["movies"]["allowed_resolutions"] = ["1080p"]
-    with patch.object(preset_main, "load_presets", return_value=value):
-        result = main.release_with_policy(
-            {"title": "Too large", "quality": "WEBDL-1080p", "size_gb": 4.0, "seeders": 20, "approved": True, "download_allowed": True, "rejections": []},
-            main.ReleaseRules(maximum_size_gb=99, minimum_seeders=0),
-        )
-    assert result["eligible"] is False
-    assert any("3 GB" in reason for reason in result["policy_rejections"])
+def test_movie_search_orchestration_uses_admin_preset_not_request_override() -> None:
+    async def run() -> None:
+        value = defaults()
+        value["movies"]["maximum_size_gb"] = 2.5
+        value["movies"]["allowed_resolutions"] = ["1080p"]
+        value["movies"]["minimum_seeders"] = 4
+        upstream = AsyncMock(return_value=({"id": 1}, [], False))
+        with patch.object(preset_main, "load_presets", return_value=value), patch.object(
+            preset_main, "_original_search_movie_releases", upstream
+        ):
+            await preset_main._preset_search_movie_releases(
+                42,
+                main.ReleaseRules(maximum_size_gb=99, minimum_seeders=0, quality_mode="720p_only"),
+                "user-1",
+            )
+        applied = upstream.await_args.args[1]
+        assert applied.maximum_size_gb == 2.5
+        assert applied.minimum_seeders == 4
+        assert applied.quality_mode == "1080p_only"
+    asyncio.run(run())
 
 
 def test_tv_policy_enforces_admin_resolution_and_seeders() -> None:
