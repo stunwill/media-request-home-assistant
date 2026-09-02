@@ -6,7 +6,7 @@ from typing import Any, Literal
 from fastapi import HTTPException, Query
 from pydantic import Field
 
-from . import main, plex_main, rich_details, runtime, settings
+from . import main, plex_main, rich_details, runtime
 from .media_services import MediaServiceError
 from .tv_services import SonarrClient, TmdbTvClient
 
@@ -134,18 +134,13 @@ def _tv_duplicate(tmdb_id: int, selected_seasons: list[int]) -> dict[str, Any] |
     return None
 
 
-async def request_tv(
-    tmdb_id: int,
-    payload: TvRequestCreate,
-    principal: main.CurrentUser,
-) -> dict[str, Any]:
+async def request_tv(tmdb_id: int, payload: TvRequestCreate, principal: main.CurrentUser) -> dict[str, Any]:
     initialise_tv_database()
     tmdb, sonarr = tv_clients()
     try:
         show = await tmdb.details(tmdb_id)
     except MediaServiceError as error:
         raise main.service_http_error(error) from error
-
     available_seasons = {int(item["season_number"]) for item in show.get("seasons", [])}
     selected = sorted({int(value) for value in payload.seasons if int(value) > 0})
     if payload.scope == "seasons":
@@ -156,11 +151,9 @@ async def request_tv(
             raise HTTPException(status_code=422, detail=f"Unknown season selection: {invalid}")
     else:
         selected = []
-
     duplicate = _tv_duplicate(tmdb_id, selected)
     if duplicate:
         raise HTTPException(status_code=409, detail={"message": "This TV show or selected season is already requested.", **duplicate})
-
     try:
         series = await sonarr.ensure_series(show, selected_seasons=selected or None)
         series_id = int(series.get("id") or 0)
@@ -169,7 +162,6 @@ async def request_tv(
         await sonarr.search(series_id, selected or None)
     except MediaServiceError as error:
         raise main.service_http_error(error) from error
-
     now = main.utc_now()
     with main.connect_db() as db:
         cursor = db.execute(
@@ -181,21 +173,10 @@ async def request_tv(
                 requested_scope,requested_seasons_json,available_episode_count,total_episode_count
             ) VALUES ('tv',?,?,?,?,0.01,0,'searching',NULL,0,?,?,?,?,?,?,0,0)
             """,
-            (
-                show["name"], str(tmdb_id), principal.user_id, principal.display_name,
-                "Searching in Sonarr", now, now, series_id,
-                payload.scope, json.dumps(selected),
-            ),
+            (show["name"], str(tmdb_id), principal.user_id, principal.display_name, "Searching in Sonarr", now, now, series_id, payload.scope, json.dumps(selected)),
         )
         request_id = int(cursor.lastrowid)
-        main.record_audit(
-            db,
-            actor_id=principal.user_id,
-            actor_name=principal.display_name,
-            action="tv_request_created",
-            request_id=request_id,
-            details={"tmdb_id": tmdb_id, "scope": payload.scope, "seasons": selected},
-        )
+        main.record_audit(db, actor_id=principal.user_id, actor_name=principal.display_name, action="tv_request_created", request_id=request_id, details={"tmdb_id": tmdb_id, "scope": payload.scope, "seasons": selected})
         db.commit()
     return {"id": request_id, "status": "searching", "media_type": "tv", "title": show["name"], "scope": payload.scope, "seasons": selected}
 
@@ -222,6 +203,7 @@ async def reconcile_tv_requests() -> None:
         rows = db.execute(
             """
             SELECT * FROM requests WHERE media_type='tv'
+              AND COALESCE(requested_scope,'series') NOT IN ('episode','season_pack')
               AND status NOT IN ('rejected','cancelled','deleted','failed','superseded')
             """
         ).fetchall()
@@ -236,11 +218,7 @@ async def reconcile_tv_requests() -> None:
             except MediaServiceError:
                 continue
             selected = set(json.loads(str(item.get("requested_seasons_json") or "[]")))
-            relevant = [
-                episode for episode in episodes
-                if int(episode.get("seasonNumber") or 0) > 0
-                and (not selected or int(episode.get("seasonNumber") or 0) in selected)
-            ]
+            relevant = [episode for episode in episodes if int(episode.get("seasonNumber") or 0) > 0 and (not selected or int(episode.get("seasonNumber") or 0) in selected)]
             total = len(relevant)
             available = sum(bool(episode.get("hasFile")) for episode in relevant)
             if total and available >= total:
@@ -252,10 +230,7 @@ async def reconcile_tv_requests() -> None:
             else:
                 status, message, progress = "searching", "Searching in Sonarr", float(item.get("progress") or 0)
             db.execute(
-                """
-                UPDATE requests SET status=?,status_message=?,progress=?,available_episode_count=?,
-                    total_episode_count=?,updated_at=? WHERE id=?
-                """,
+                "UPDATE requests SET status=?,status_message=?,progress=?,available_episode_count=?,total_episode_count=?,updated_at=? WHERE id=?",
                 (status, message, progress, available, total, main.utc_now(), item["id"]),
             )
         db.commit()
@@ -290,20 +265,14 @@ async def tv_download_details(request_id: int, principal: main.CurrentUser) -> d
     tmdb, _ = tv_clients()
     try:
         show = await tmdb.details(int(item["external_id"]))
-    except MediaServiceError as error:
-        raise main.service_http_error(error) from error
+    except (MediaServiceError, ValueError) as error:
+        raise main.service_http_error(error) if isinstance(error, MediaServiceError) else HTTPException(status_code=502, detail="TV request metadata is unavailable")
     show["context"] = "downloads"
     show["request"] = {
-        "id": int(item["id"]),
-        "requested_by": str(item["requested_by_name"]),
-        "requested_at": str(item["created_at"]),
-        "status": str(item["status"]),
-        "status_message": str(item.get("status_message") or ""),
-        "progress": float(item.get("progress") or 0),
-        "scope": str(item.get("requested_scope") or "series"),
-        "seasons": json.loads(str(item.get("requested_seasons_json") or "[]")),
-        "available_episode_count": int(item.get("available_episode_count") or 0),
-        "total_episode_count": int(item.get("total_episode_count") or 0),
+        "id": int(item["id"]), "requested_by": str(item["requested_by_name"]), "requested_at": str(item["created_at"]),
+        "status": str(item["status"]), "status_message": str(item.get("status_message") or ""), "progress": float(item.get("progress") or 0),
+        "scope": str(item.get("requested_scope") or "series"), "seasons": json.loads(str(item.get("requested_seasons_json") or "[]")),
+        "available_episode_count": int(item.get("available_episode_count") or 0), "total_episode_count": int(item.get("total_episode_count") or 0),
     }
     return show
 

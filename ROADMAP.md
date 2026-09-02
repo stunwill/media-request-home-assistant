@@ -29,7 +29,7 @@ Status: Delivered
 
 ## v0.10.0 - Television Requests and Sonarr Workflow
 
-Status: In Progress
+Status: Delivered
 
 ### Features
 - [x] Add separate Movies and TV Shows Browse modes with independent catalogue state.
@@ -48,12 +48,39 @@ Status: In Progress
 - [x] Use the same automatic infinite scrolling behavior for TV Shows.
 - [x] Prevent duplicate page requests and duplicate TMDb cards while appending results.
 - [x] Keep movie and TV states clearly distinguishable and maintain responsive/mobile behavior.
+- [x] Stabilise the post-v0.10 search flow and exclude explicitly non-English catalogue results.
 
 ### Testing
 - [x] Add TMDb TV and Sonarr request/reconciliation regression tests.
 - [x] Add TV duplicate-protection and season-scope tests.
 - [x] Add infinite-scroll and media-mode UI regression coverage.
 - [x] Keep existing movie, Radarr, Prowlarr, qBittorrent, Plex and lifecycle tests intact.
+
+## v0.11.0 - TV Release Selection & Size-Aware Downloads
+
+Status: In Progress
+
+### Features
+- [x] Add season details and Sonarr-backed episode availability views.
+- [x] Add interactive season-pack release selection with actual download size visibility.
+- [x] Add interactive individual-episode release selection.
+- [x] Add opaque single-use TV release tokens and selected-release acquisition records.
+
+### Integrations
+- [x] Use Sonarr interactive release endpoints and Sonarr-managed grab/import flow.
+- [x] Keep qBittorrent downstream of Sonarr and preserve Sonarr as episode-file authority.
+- [x] Add configurable 10 GB season and 1 GB episode size limits with server-side enforcement.
+- [ ] Extend Plex library awareness to TV only where stable identifiers can be matched confidently.
+
+### UX / Quality
+- [x] Make season-by-season acquisition the primary TV workflow.
+- [x] De-emphasise whole-series requests as an advanced action.
+- [x] Return individual episode acquisition to the parent season episode list.
+- [x] Hide normal release-search actions for episodes already available in Sonarr.
+
+### Testing
+- [x] Complete interactive release, size-policy, token-security and episode-completion regression coverage.
+- [x] Keep Movie, Sonarr, Radarr, Prowlarr, qBittorrent, Plex, English-filter and infinite-scroll tests green.
 
 ## Future
 

@@ -1,5 +1,5 @@
 name: MediaHub
-version: "0.10.0-dev"
+version: "0.11.0-dev"
 slug: mediahub
 description: Family-friendly movie and TV request management for Home Assistant
 url: https://github.com/stunwill/media-request-home-assistant
@@ -31,6 +31,9 @@ options:
     reservation_multiplier: 1.5
   approvals:
     auto_approve: true
+  tv_downloads:
+    maximum_season_size_gb: 10.0
+    maximum_episode_size_gb: 1.0
   integrations:
     tmdb_api_key: ""
     prowlarr_url: ""
@@ -60,6 +63,9 @@ schema:
     reservation_multiplier: float
   approvals:
     auto_approve: bool
+  tv_downloads:
+    maximum_season_size_gb: float
+    maximum_episode_size_gb: float
   integrations:
     tmdb_api_key: password
     prowlarr_url: str
