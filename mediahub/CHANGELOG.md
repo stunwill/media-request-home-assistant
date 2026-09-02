@@ -1,5 +1,15 @@
 # MediaHub Home Assistant Changelog
 
+## 0.12.0-dev
+
+- Reorganised Setup into **Service Connections** and **Presets**.
+- Added administrator-only household presets for catalogue language, Movie resolutions/size/seeders, TV resolutions/season size/episode size/seeders and recent-release fallback.
+- English-only browsing remains the default but can now be changed by an administrator.
+- Movie and TV release rules are applied centrally so requesters cannot override household download limits.
+- Added **Reset to defaults** for presets.
+- Existing v0.11 TV size settings are preserved on upgrade and synchronised into the new preset model.
+- Security controls such as duplicate protection, opaque release tokens and credential handling remain fixed and cannot be disabled from Setup.
+
 ## 0.11.0-dev
 
 - Added season-by-season TV acquisition as the primary TV workflow.
