@@ -12,9 +12,7 @@ app = tv_release_ui.app
 app.version = "0.12.0-dev"
 
 DEFAULT_PRESETS: dict[str, Any] = {
-    "discovery": {
-        "original_language": "en",
-    },
+    "discovery": {"original_language": "en"},
     "movies": {
         "allowed_resolutions": ["1080p", "720p"],
         "maximum_size_gb": 3.0,
@@ -70,7 +68,6 @@ def load_presets() -> dict[str, Any]:
     options = main.load_options()
     raw = options.get("presets") or {}
     merged = _merge(DEFAULT_PRESETS, raw if isinstance(raw, dict) else {})
-    # Preserve v0.11 TV-size settings as an upgrade source until an admin saves Presets.
     legacy_tv = options.get("tv_downloads") or {}
     if not isinstance(raw, dict) or "tv" not in raw:
         merged["tv"]["maximum_season_size_gb"] = float(legacy_tv.get("maximum_season_size_gb") or 10.0)
@@ -82,7 +79,6 @@ def save_presets(payload: PresetsUpdate) -> dict[str, Any]:
     value = payload.model_dump()
     stored = settings._read_json(settings.SETTINGS_FILE)
     stored["presets"] = value
-    # Keep the v0.11 compatibility key synchronized for older code paths.
     stored["tv_downloads"] = {
         "maximum_season_size_gb": value["tv"]["maximum_season_size_gb"],
         "maximum_episode_size_gb": value["tv"]["maximum_episode_size_gb"],
@@ -120,18 +116,19 @@ def movie_rules() -> main.ReleaseRules:
     )
 
 
-_original_release_with_policy = main.release_with_policy
-_original_recent_fallback_policy = enhanced_main.recent_fallback_policy
+_original_search_movie_releases = enhanced_main.search_movie_releases
 _original_is_recent_movie = enhanced_main.is_recent_movie
 _original_tv_release_public = tv_release_selection._release_public
 
 
-def _preset_movie_policy(release: dict[str, Any], _rules: main.ReleaseRules) -> dict[str, Any]:
-    return _original_release_with_policy(release, movie_rules())
-
-
-def _preset_recent_policy(release: dict[str, Any], _rules: main.ReleaseRules) -> dict[str, Any]:
-    return _original_recent_fallback_policy(release, movie_rules())
+async def _preset_search_movie_releases(
+    tmdb_id: int,
+    _rules: main.ReleaseRules,
+    user_id: str,
+    *,
+    movie: dict[str, Any] | None = None,
+):
+    return await _original_search_movie_releases(tmdb_id, movie_rules(), user_id, movie=movie)
 
 
 def _preset_is_recent_movie(movie: dict[str, Any], *, today=None) -> bool:
@@ -165,7 +162,7 @@ def _preset_tv_release_public(item: dict[str, Any], *, limit_gb: float, scope: L
         result["policy_rejections"].append("Release resolution is not enabled in MediaHub Presets")
     minimum_seeders = int(tv["minimum_seeders"])
     seeders = result.get("seeders")
-    if minimum_seeders and (seeders is None or int(seeders) < minimum_seeders):
+    if minimum_seeders and seeders is not None and int(seeders) < minimum_seeders:
         result["policy_rejections"].append(f"Release has fewer than {minimum_seeders} seeders")
     result["policy_rejections"] = list(dict.fromkeys(result["policy_rejections"]))
     result["eligible"] = not result["policy_rejections"]
@@ -194,8 +191,7 @@ async def _tv_get_with_language(self: tv_services.TmdbTvClient, path: str, param
     return payload
 
 
-main.release_with_policy = _preset_movie_policy
-enhanced_main.recent_fallback_policy = _preset_recent_policy
+enhanced_main.search_movie_releases = _preset_search_movie_releases
 enhanced_main.is_recent_movie = _preset_is_recent_movie
 tv_release_selection._policy = _preset_tv_policy
 tv_release_selection._release_public = _preset_tv_release_public
