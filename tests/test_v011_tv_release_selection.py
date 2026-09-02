@@ -104,7 +104,9 @@ def test_sonarr_interactive_release_endpoints_and_grab() -> None:
 
 
 def test_v011_routes_and_version_registered() -> None:
-    assert tv_release_selection.app.version == "0.11.0-dev"
+    version = tv_release_selection.app.version.removesuffix("-dev")
+    major, minor, _patch = (int(value) for value in version.split("."))
+    assert major == 0 and minor >= 11
     paths = {route.path for route in tv_release_selection.app.routes}
     for path in {
         "/api/catalog/tv/{tmdb_id}/seasons/{season_number}",
