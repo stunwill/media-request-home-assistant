@@ -41,24 +41,21 @@ Status: Delivered
 - [x] Use Sonarr for real TV series lookup, add, search and status reconciliation.
 - [x] Add Sonarr root-folder and quality-profile operational settings.
 - [x] Preserve Prowlarr as the configured indexer boundary and qBittorrent as Sonarr's downstream download client.
-- [ ] Extend Plex library awareness to TV only where stable identifiers can be matched confidently.
 
 ### UX / Quality
 - [x] Replace manual movie catalogue pagination with automatic IntersectionObserver infinite scrolling.
 - [x] Use the same automatic infinite scrolling behavior for TV Shows.
 - [x] Prevent duplicate page requests and duplicate TMDb cards while appending results.
-- [x] Keep movie and TV states clearly distinguishable and maintain responsive/mobile behavior.
-- [x] Stabilise the post-v0.10 search flow and exclude explicitly non-English catalogue results.
+- [x] Stabilise search and exclude explicitly non-English catalogue results by default.
 
 ### Testing
 - [x] Add TMDb TV and Sonarr request/reconciliation regression tests.
 - [x] Add TV duplicate-protection and season-scope tests.
 - [x] Add infinite-scroll and media-mode UI regression coverage.
-- [x] Keep existing movie, Radarr, Prowlarr, qBittorrent, Plex and lifecycle tests intact.
 
 ## v0.11.0 - TV Release Selection & Size-Aware Downloads
 
-Status: In Progress
+Status: Delivered
 
 ### Features
 - [x] Add season details and Sonarr-backed episode availability views.
@@ -70,7 +67,6 @@ Status: In Progress
 - [x] Use Sonarr interactive release endpoints and Sonarr-managed grab/import flow.
 - [x] Keep qBittorrent downstream of Sonarr and preserve Sonarr as episode-file authority.
 - [x] Add configurable 10 GB season and 1 GB episode size limits with server-side enforcement.
-- [ ] Extend Plex library awareness to TV only where stable identifiers can be matched confidently.
 
 ### UX / Quality
 - [x] Make season-by-season acquisition the primary TV workflow.
@@ -81,6 +77,33 @@ Status: In Progress
 ### Testing
 - [x] Complete interactive release, size-policy, token-security and episode-completion regression coverage.
 - [x] Keep Movie, Sonarr, Radarr, Prowlarr, qBittorrent, Plex, English-filter and infinite-scroll tests green.
+
+## v0.12.0 - Admin Setup Presets
+
+Status: In Progress
+
+### Features
+- [x] Split Setup into Service Connections and Presets sections.
+- [x] Add administrator-managed discovery language presets.
+- [x] Add administrator-managed Movie resolution, maximum-size, minimum-seeder and recent-release fallback presets.
+- [x] Add administrator-managed TV resolution, season-size, episode-size and minimum-seeder presets.
+- [x] Add Reset to defaults while preserving safe existing defaults for upgraded installations.
+
+### Integrations
+- [x] Apply language presets consistently to TMDb Movie and TV catalogue/search responses.
+- [x] Apply Movie presets to Radarr/Prowlarr release eligibility through the existing MediaHub policy boundary.
+- [x] Apply TV presets to Sonarr interactive season/episode release eligibility.
+- [x] Keep v0.11 TV size settings compatible and synchronised when Presets are saved.
+
+### UX / Quality
+- [x] Remove requester-editable Movie release-policy controls in favour of global administrator presets.
+- [x] Keep security invariants such as duplicate protection, opaque release tokens and credential redaction non-configurable.
+- [x] Keep Setup and preset mutation administrator-only.
+- [x] Preserve responsive Home Assistant Setup layouts.
+
+### Testing
+- [ ] Complete preset persistence, authorization, policy-enforcement and language-filter regression coverage.
+- [ ] Keep Movie, TV, Sonarr, Radarr, Prowlarr, qBittorrent, Plex, lifecycle and infinite-scroll tests green.
 
 ## Future
 
