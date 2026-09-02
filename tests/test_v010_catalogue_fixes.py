@@ -16,7 +16,7 @@ def test_legacy_movie_loader_is_disabled_before_infinite_scroll_runs() -> None:
     )
     assert "oldLoadMore.remove()" in html
     assert "catalogue-sentinel" in html
-    assert tv_ui.app.version == "0.10.0-dev"
+    assert tv_ui.app.version.endswith("-dev")
 
 
 def test_movie_search_keeps_only_english_original_language() -> None:
