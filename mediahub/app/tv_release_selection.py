@@ -43,21 +43,13 @@ def initialise_tv_release_database() -> None:
         for name, definition in migrations.items():
             if name not in columns:
                 db.execute(f"ALTER TABLE requests ADD COLUMN {name} {definition}")
-        db.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_requests_tv_episode_active
-            ON requests (media_type, sonarr_episode_id, status)
-            """
-        )
+        db.execute("CREATE INDEX IF NOT EXISTS idx_requests_tv_episode_active ON requests (media_type, sonarr_episode_id, status)")
         db.commit()
 
 
 def _policy(options: dict[str, Any] | None = None) -> dict[str, float]:
     values = (options or main.load_options()).get("tv_downloads", {})
-    return {
-        "maximum_season_size_gb": float(values.get("maximum_season_size_gb") or 10),
-        "maximum_episode_size_gb": float(values.get("maximum_episode_size_gb") or 1),
-    }
+    return {"maximum_season_size_gb": float(values.get("maximum_season_size_gb") or 10), "maximum_episode_size_gb": float(values.get("maximum_episode_size_gb") or 1)}
 
 
 def _size_gb(size_bytes: int) -> float:
@@ -84,14 +76,7 @@ def _release_codec(title: str) -> str | None:
 
 def _release_source(title: str, quality: str) -> str | None:
     haystack = f"{title} {quality}".casefold()
-    for marker, label in (
-        ("web-dl", "WEB-DL"),
-        ("webdl", "WEB-DL"),
-        ("webrip", "WEBRip"),
-        ("bluray", "BluRay"),
-        ("bdrip", "BluRay"),
-        ("hdtv", "HDTV"),
-    ):
+    for marker, label in (("web-dl", "WEB-DL"), ("webdl", "WEB-DL"), ("webrip", "WEBRip"), ("bluray", "BluRay"), ("bdrip", "BluRay"), ("hdtv", "HDTV")):
         if marker in haystack:
             return label
     return None
@@ -159,8 +144,7 @@ def _episode_status(episode: dict[str, Any], queued_episode_ids: set[int]) -> st
     air_date = str(episode.get("airDateUtc") or episode.get("airDate") or "")
     if air_date:
         try:
-            aired = datetime.fromisoformat(air_date.replace("Z", "+00:00"))
-            if aired.astimezone(UTC) > datetime.now(UTC):
+            if datetime.fromisoformat(air_date.replace("Z", "+00:00")).astimezone(UTC) > datetime.now(UTC):
                 return "unaired"
         except ValueError:
             pass
@@ -187,33 +171,9 @@ async def _season_snapshot(tmdb_id: int, season_number: int) -> dict[str, Any]:
         episode_id = int(episode.get("id") or 0)
         if status == "available" and episode_id:
             _invalidate_episode_tokens(episode_id)
-        public_episodes.append({
-            "sonarr_episode_id": episode_id,
-            "season_number": season_number,
-            "episode_number": int(episode.get("episodeNumber") or 0),
-            "title": str(episode.get("title") or f"Episode {episode.get('episodeNumber', '')}"),
-            "overview": str(episode.get("overview") or ""),
-            "air_date": str(episode.get("airDate") or episode.get("airDateUtc") or ""),
-            "runtime_minutes": int(episode.get("runtime") or 0) or None,
-            "status": status,
-            "has_file": bool(episode.get("hasFile")),
-        })
+        public_episodes.append({"sonarr_episode_id": episode_id, "season_number": season_number, "episode_number": int(episode.get("episodeNumber") or 0), "title": str(episode.get("title") or f"Episode {episode.get('episodeNumber', '')}"), "overview": str(episode.get("overview") or ""), "air_date": str(episode.get("airDate") or episode.get("airDateUtc") or ""), "runtime_minutes": int(episode.get("runtime") or 0) or None, "status": status, "has_file": bool(episode.get("hasFile"))})
     season_meta = next((item for item in show.get("seasons", []) if int(item.get("season_number") or 0) == season_number), {})
-    return {
-        "tmdb_id": tmdb_id,
-        "series_id": int(series["id"]),
-        "series_title": str(show.get("name") or show.get("title") or "TV Show"),
-        "season_number": season_number,
-        "season_name": str(season_meta.get("name") or f"Season {season_number}"),
-        "poster_url": season_meta.get("poster_url"),
-        "air_date": season_meta.get("air_date"),
-        "total_episode_count": len(public_episodes),
-        "available_episode_count": sum(item["status"] == "available" for item in public_episodes),
-        "downloading_episode_count": sum(item["status"] == "downloading" for item in public_episodes),
-        "missing_episode_count": sum(item["status"] == "missing" for item in public_episodes),
-        "episodes": public_episodes,
-        "policy": _policy(),
-    }
+    return {"tmdb_id": tmdb_id, "series_id": int(series["id"]), "series_title": str(show.get("name") or show.get("title") or "TV Show"), "season_number": season_number, "season_name": str(season_meta.get("name") or f"Season {season_number}"), "poster_url": season_meta.get("poster_url"), "air_date": season_meta.get("air_date"), "total_episode_count": len(public_episodes), "available_episode_count": sum(item["status"] == "available" for item in public_episodes), "downloading_episode_count": sum(item["status"] == "downloading" for item in public_episodes), "missing_episode_count": sum(item["status"] == "missing" for item in public_episodes), "episodes": public_episodes, "policy": _policy()}
 
 
 async def season_details(tmdb_id: int, season_number: int, _: main.CurrentUser) -> dict[str, Any]:
@@ -245,7 +205,7 @@ async def season_releases(tmdb_id: int, season_number: int, principal: main.Curr
         item["existing_episode_count"] = int(snapshot["available_episode_count"])
         item["season_episode_count"] = int(snapshot["total_episode_count"])
         public.append(item)
-    public.sort(key=lambda item: (not item["eligible"], item["size_bytes"] or 10**18, -(item["seeders"] or -1)))
+    public.sort(key=lambda item: (not item["eligible"], "1080" not in item["quality"].casefold(), item["codec"] != "x265/HEVC", -(item["seeders"] or -1), item["size_bytes"] or 10**18))
     with main.connect_db() as db:
         main.record_audit(db, actor_id=principal.user_id, actor_name=principal.display_name, action="tv_season_release_search", request_id=None, details={"tmdb_id": tmdb_id, "season_number": season_number, "result_count": len(public)})
         db.commit()
@@ -274,7 +234,7 @@ async def episode_releases(tmdb_id: int, season_number: int, episode_number: int
         item = _release_public(release, limit_gb=limit, scope="episode")
         item["release_token"] = _cache_release(user_id=principal.user_id, series_id=int(snapshot["series_id"]), season_number=season_number, episode_id=int(episode["sonarr_episode_id"]), release=release)
         public.append(item)
-    public.sort(key=lambda item: (not item["eligible"], item["size_bytes"] or 10**18, -(item["seeders"] or -1)))
+    public.sort(key=lambda item: (not item["eligible"], "1080" not in item["quality"].casefold(), item["codec"] != "x265/HEVC", -(item["seeders"] or -1), item["size_bytes"] or 10**18))
     with main.connect_db() as db:
         main.record_audit(db, actor_id=principal.user_id, actor_name=principal.display_name, action="tv_episode_release_search", request_id=None, details={"tmdb_id": tmdb_id, "season_number": season_number, "episode_number": episode_number, "result_count": len(public)})
         db.commit()
@@ -283,10 +243,7 @@ async def episode_releases(tmdb_id: int, season_number: int, episode_number: int
 
 def _active_episode_request(episode_id: int) -> dict[str, Any] | None:
     with main.connect_db() as db:
-        row = db.execute(
-            "SELECT id,status FROM requests WHERE media_type='tv' AND sonarr_episode_id=? AND status IN ('searching','queued','downloading','processing') ORDER BY id DESC LIMIT 1",
-            (episode_id,),
-        ).fetchone()
+        row = db.execute("SELECT id,status FROM requests WHERE media_type='tv' AND sonarr_episode_id=? AND status IN ('searching','queued','downloading','processing') ORDER BY id DESC LIMIT 1", (episode_id,)).fetchone()
     return dict(row) if row else None
 
 
@@ -318,8 +275,7 @@ async def grab_tv_release(payload: TvGrabRequest, principal: main.CurrentUser) -
     episode_number = next((int(item.get("episodeNumber") or 0) for item in relevant), None) if episode_id else None
     now = main.utc_now()
     with main.connect_db() as db:
-        cursor = db.execute(
-            """
+        cursor = db.execute("""
             INSERT INTO requests (
               media_type,title,external_id,requested_by_id,requested_by_name,
               estimated_size_gb,reserved_size_gb,status,rejection_reason,progress,status_message,
@@ -327,24 +283,9 @@ async def grab_tv_release(payload: TvGrabRequest, principal: main.CurrentUser) -
               available_episode_count,total_episode_count,season_number,episode_number,
               sonarr_episode_id,selected_release_title,selected_release_size_bytes,selected_release_source
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                "tv", selected_title, str(series_id), principal.user_id, principal.display_name,
-                public["size_gb"] or 0.01, 0, "downloading", None, 0, "Downloading selected TV release",
-                now, now, series_id, "episode" if episode_id else "season_pack",
-                json.dumps([season_number] if season_number else []), 0, 1 if episode_id else len(relevant),
-                season_number, episode_number, episode_id, selected_title, int(release.get("size") or 0), public.get("source"),
-            ),
-        )
+            """, ("tv", selected_title, str(series_id), principal.user_id, principal.display_name, public["size_gb"] or 0.01, 0, "downloading", None, 0, "Downloading selected TV release", now, now, series_id, "episode" if episode_id else "season_pack", json.dumps([season_number] if season_number else []), 0, 1 if episode_id else len(relevant), season_number, episode_number, episode_id, selected_title, int(release.get("size") or 0), public.get("source")))
         request_id = int(cursor.lastrowid)
-        main.record_audit(
-            db,
-            actor_id=principal.user_id,
-            actor_name=principal.display_name,
-            action="tv_episode_release_selected" if episode_id else "tv_season_release_selected",
-            request_id=request_id,
-            details={"series_id": series_id, "season_number": season_number, "episode_id": episode_id, "size_bytes": int(release.get("size") or 0)},
-        )
+        main.record_audit(db, actor_id=principal.user_id, actor_name=principal.display_name, action="tv_episode_release_selected" if episode_id else "tv_season_release_selected", request_id=request_id, details={"series_id": series_id, "season_number": season_number, "episode_id": episode_id, "size_bytes": int(release.get("size") or 0)})
         db.commit()
     return {"request_id": request_id, "status": "downloading", "scope": "episode" if episode_id else "season", "title": selected_title}
 
@@ -353,9 +294,7 @@ async def reconcile_selected_tv_releases() -> None:
     initialise_tv_release_database()
     _, sonarr = tv_main.tv_clients()
     with main.connect_db() as db:
-        rows = db.execute(
-            "SELECT * FROM requests WHERE media_type='tv' AND requested_scope IN ('episode','season_pack') AND status IN ('searching','queued','downloading','processing')"
-        ).fetchall()
+        rows = db.execute("SELECT * FROM requests WHERE media_type='tv' AND requested_scope IN ('episode','season_pack') AND status IN ('searching','queued','downloading','processing')").fetchall()
     series_ids = sorted({int(row["sonarr_series_id"] or 0) for row in rows if int(row["sonarr_series_id"] or 0)})
     for series_id in series_ids:
         try:
@@ -372,10 +311,12 @@ async def reconcile_selected_tv_releases() -> None:
                     episode = next((item for item in episodes if int(item.get("id") or 0) == episode_id), None)
                     if not episode:
                         continue
+                    previous_status = str(row.get("status") or "")
                     if episode.get("hasFile"):
                         status, progress, message = "available", 100.0, "Available in Sonarr library"
                         _invalidate_episode_tokens(episode_id)
-                        main.record_audit(db, actor_id="system", actor_name="MediaHub", action="tv_episode_available", request_id=int(row["id"]), details={"episode_id": episode_id})
+                        if previous_status != "available":
+                            main.record_audit(db, actor_id="system", actor_name="MediaHub", action="tv_episode_available", request_id=int(row["id"]), details={"episode_id": episode_id})
                     elif episode_id in queued_episode_ids:
                         status, progress, message = "downloading", float(row.get("progress") or 0), "Downloading through Sonarr"
                     else:
@@ -387,9 +328,11 @@ async def reconcile_selected_tv_releases() -> None:
                     available = sum(bool(item.get("hasFile")) for item in season_eps)
                     total = len(season_eps)
                     queued = any(int(item.get("id") or 0) in queued_episode_ids for item in season_eps)
+                    previous_status = str(row.get("status") or "")
                     if total and available == total:
                         status, progress, message = "available", 100.0, "Season available in Sonarr library"
-                        main.record_audit(db, actor_id="system", actor_name="MediaHub", action="tv_season_available", request_id=int(row["id"]), details={"season_number": season_number})
+                        if previous_status != "available":
+                            main.record_audit(db, actor_id="system", actor_name="MediaHub", action="tv_season_available", request_id=int(row["id"]), details={"season_number": season_number})
                     elif available:
                         status, progress, message = "processing", round(available / max(total, 1) * 100, 1), f"Partially available ({available}/{total} episodes)"
                     elif queued:
@@ -398,6 +341,11 @@ async def reconcile_selected_tv_releases() -> None:
                         status, progress, message = "processing", float(row.get("progress") or 0), "Waiting for Sonarr import"
                     db.execute("UPDATE requests SET status=?,progress=?,status_message=?,available_episode_count=?,total_episode_count=?,updated_at=? WHERE id=?", (status, progress, message, available, total, main.utc_now(), row["id"]))
             db.commit()
+
+
+async def downloads_v011(principal: main.CurrentUser) -> list[dict[str, Any]]:
+    await reconcile_selected_tv_releases()
+    return await tv_main.downloads_with_tv(principal)
 
 
 async def tv_policy(_: main.CurrentUser) -> dict[str, float]:
@@ -415,6 +363,7 @@ async def release_health(_: main.CurrentUser) -> dict[str, Any]:
     return {"version": app.version, "tv_downloads": _policy()}
 
 
+tv_main.plex_main.plex_integration.rich_details.runtime.enhanced_main._replace_route("/api/downloads", "GET", downloads_v011)
 app.add_api_route("/api/catalog/tv/{tmdb_id}/seasons/{season_number}", season_details, methods=["GET"])
 app.add_api_route("/api/catalog/tv/{tmdb_id}/seasons/{season_number}/releases", season_releases, methods=["GET"])
 app.add_api_route("/api/catalog/tv/{tmdb_id}/seasons/{season_number}/episodes/{episode_number}/releases", episode_releases, methods=["GET"])
