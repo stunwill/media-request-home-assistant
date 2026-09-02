@@ -80,7 +80,7 @@ Status: Delivered
 
 ## v0.12.0 - Admin Setup Presets
 
-Status: In Progress
+Status: Delivered
 
 ### Features
 - [x] Split Setup into Service Connections and Presets sections.
@@ -102,8 +102,8 @@ Status: In Progress
 - [x] Preserve responsive Home Assistant Setup layouts.
 
 ### Testing
-- [ ] Complete preset persistence, authorization, policy-enforcement and language-filter regression coverage.
-- [ ] Keep Movie, TV, Sonarr, Radarr, Prowlarr, qBittorrent, Plex, lifecycle and infinite-scroll tests green.
+- [x] Complete preset persistence, authorization, policy-enforcement and language-filter regression coverage.
+- [x] Keep Movie, TV, Sonarr, Radarr, Prowlarr, qBittorrent, Plex, lifecycle and infinite-scroll tests green.
 
 ## Future
 
