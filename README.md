@@ -15,10 +15,12 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 - Release-aware movie lifecycle handling for announced, theatrical, digital, physical, and uncertain availability states
 - Persisted **Watch for release** workflow with lightweight background checking
 - Automatic movie requests using selectable 720p/1080p, maximum-size, minimum-seeder, and Radarr acceptance rules
-- Whole-series and selected-season TV requests through Sonarr
 - Interactive movie release selection with IPTorrents results supplied through Prowlarr and Radarr
+- Season-by-season TV acquisition with interactive Sonarr release selection
+- Individual missing-episode release selection with actual release sizes before download
+- Configurable TV hard limits: 10 GB per season pack and 1 GB per episode by default
 - Radarr movie creation, release submission, and download/library reconciliation
-- Sonarr TV series lookup, monitoring/search, and episode/library reconciliation
+- Sonarr TV series lookup, monitoring, interactive release search/grab, and episode/library reconciliation
 - qBittorrent download progress and path diagnostics
 - Optional Plex movie-library awareness with stable TMDb/IMDb matching and safe Watch in Plex links
 - Storage-space protection and automatic rejection
@@ -26,7 +28,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-MediaHub is in active development. The current development version is `0.10.0-dev`, delivering the planned Television Requests and Sonarr Workflow phase while preserving the existing movie, Plex, Radarr, Prowlarr and qBittorrent stack. Plex TV-library matching remains future work; TV requests do not depend on Plex.
+MediaHub is in active development. The current development version is `0.11.0-dev`, focused on TV Release Selection & Size-Aware Downloads. The release preserves the Movie, Plex, Radarr, Prowlarr, qBittorrent, infinite-scroll and English-only catalogue stack delivered previously.
 
 ## Repository metadata contract
 
@@ -36,7 +38,7 @@ MediaHub keeps machine-readable project/release metadata in predictable location
 - `CHANGELOG.md` — detailed repository/project release history.
 - `mediahub/CHANGELOG.md` — concise Home Assistant user-facing release notes beside `mediahub/config.yaml`.
 - `mediahub/config.yaml` — Home Assistant add-on version and manifest metadata.
-- `mediahub/app/tv_ui.py` — current deployed application entrypoint; `/api/health` reports the same application version.
+- `mediahub/app/tv_release_ui.py` — current deployed application entrypoint; `/api/health` reports the same application version.
 - Git tags/releases — actual published releases use semantic tags in the form `vX.Y.Z` and meaningful GitHub Release notes.
 - Pull requests and GitHub Actions remain the authoritative sources for proposed changes and CI status.
 
@@ -47,6 +49,8 @@ Metadata-only maintenance does not invent a new MediaHub product version. Produc
 Browse defaults to **Movies** and provides a clear **Movies / TV Shows** selector. Each media type retains independent collection, search/filter and pagination state. Movie results never mix with TV results.
 
 The previous manual **Load more Movies** button is removed. Both media types use an `IntersectionObserver` sentinel near the end of the grid. MediaHub requests one additional TMDb page at a time, appends unique TMDb IDs, prevents concurrent duplicate page loads, stops at the final page, and keeps already-loaded results visible if a later request fails.
+
+Explicitly non-English Movie/TV catalogue results are filtered using TMDb original-language metadata while legacy records without language metadata remain compatible.
 
 ## Movie request workflow
 
@@ -63,14 +67,60 @@ Movie Plex availability is optional and never determines whether Radarr import/r
 
 ## TV request workflow
 
-1. Select **TV Shows** in Browse and browse Popular, Airing today, On TV or Top rated TMDb collections, or search by title.
-2. Open a series to view overview, dates/status, seasons, episode counts, creators, networks, cast and trailer metadata.
-3. Choose **Request entire series** or select one or more seasons.
-4. MediaHub uses the TMDb/TVDB identity to locate or reuse the series in Sonarr.
-5. Sonarr monitors the requested scope and runs `SeriesSearch` or `SeasonSearch` through its configured indexers/download client.
-6. MediaHub reconciles episode-file availability and distinguishes searching, downloading, partially available and available TV requests in Downloads.
+The normal TV acquisition workflow is deliberately season-first:
 
-Single-episode request UI and Plex TV-library matching are intentionally deferred from the first TV release.
+1. Select **TV Shows** in Browse and open a series.
+2. Choose a season using **View season**.
+3. MediaHub asks Sonarr for episode-file availability and displays available, downloading, missing and unaired episodes.
+4. Choose either **Find season packs** or **View episodes**.
+5. Season packs are searched interactively through Sonarr and displayed with actual size, quality, source, codec, seeders and indexer metadata.
+6. Missing episodes can be searched independently with the same release-selection pattern.
+7. MediaHub rejects season packs larger than the configured season limit and episode releases larger than the episode limit. Defaults are 10 GB and 1 GB respectively.
+8. Eligible selections use opaque expiring release tokens; Sonarr performs the actual grab and remains responsible for qBittorrent/import handling.
+9. An episode is only marked Available once Sonarr reports an imported episode file.
+10. After an individual release is selected, MediaHub returns to the parent season list so the next missing episode can be selected.
+
+**Request entire series** remains available as an advanced secondary action for users who deliberately want Sonarr to search the full show. It is no longer the dominant TV action.
+
+## TV download size policy
+
+Administrators can configure:
+
+- Maximum TV season-pack size — default `10 GB`
+- Maximum TV individual-episode size — default `1 GB`
+
+MediaHub evaluates exact release byte counts from Sonarr and enforces the limits server-side. Oversize releases are visible with rejection reasons but cannot be selected through the normal workflow.
+
+## TV acquisition architecture
+
+```text
+TMDb
+  ↓
+TV Show
+  ↓
+Season
+  ├── Season pack search
+  │       ↓
+  │   release selection
+  │       ↓
+  │     Sonarr
+  │
+  └── Episodes
+          ↓
+      episode search
+          ↓
+      release selection
+          ↓
+        Sonarr
+          ↓
+      qBittorrent
+          ↓
+      Sonarr import
+          ↓
+       Available
+```
+
+Sonarr remains authoritative for series/episode identity and imported episode-file availability. MediaHub does not bypass Sonarr with arbitrary torrent URLs.
 
 ## Integration connection checks
 
@@ -95,4 +145,4 @@ Public self-registration is disabled. Passwords are salted `scrypt` hashes, sess
 
 After Radarr connects, choose its movie root folder and quality profile on the Setup screen. MediaHub adds movies without uncontrolled automatic search so lifecycle awareness and release rules remain authoritative.
 
-After Sonarr connects, configure its TV root folder and quality profile. TV requests use Sonarr's native series/season monitoring and search commands rather than reusing the movie-specific release-token picker.
+After Sonarr connects, configure its TV root folder and quality profile. The v0.11 TV workflow uses Sonarr's interactive release API for deliberate season/episode selection; the legacy whole-series action still uses Sonarr's native automatic series search when explicitly chosen.
