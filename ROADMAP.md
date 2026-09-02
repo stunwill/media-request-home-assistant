@@ -79,8 +79,8 @@ Status: In Progress
 - [x] Hide normal release-search actions for episodes already available in Sonarr.
 
 ### Testing
-- [ ] Complete interactive release, size-policy, token-security and episode-completion regression coverage.
-- [ ] Keep Movie, Sonarr, Radarr, Prowlarr, qBittorrent, Plex, English-filter and infinite-scroll tests green.
+- [x] Complete interactive release, size-policy, token-security and episode-completion regression coverage.
+- [x] Keep Movie, Sonarr, Radarr, Prowlarr, qBittorrent, Plex, English-filter and infinite-scroll tests green.
 
 ## Future
 
