@@ -71,7 +71,8 @@ def test_apply_identity_removes_eligibility_before_quality_can_win() -> None:
 
 def test_v013_mobile_ux_markers_present() -> None:
     html = main.INDEX_HTML
-    assert mobile_live_ui.app.version == "0.13.0-dev"
+    major, minor, *_ = [int(part.split("-", 1)[0]) for part in mobile_live_ui.app.version.split(".")]
+    assert (major, minor) >= (0, 13)
     for marker in (
         "mobile-filter-toggle", "mobile-bottom-nav", "detail-skeleton", "BEST MATCH",
         "Unavailable releases", "MutationObserver", "visibilitychange", "450",

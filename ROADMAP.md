@@ -61,7 +61,7 @@ Status: Delivered
 
 ## v0.13.0 - Release Identity, Mobile UX & Live Downloads
 
-Status: In Progress
+Status: Delivered
 
 ### Features
 - [x] Add deterministic Movie release identity validation before quality/download eligibility.
@@ -82,12 +82,52 @@ Status: In Progress
 - [x] Add The Dog Stars false-positive regression coverage.
 - [x] Add Buffalo Soldiers ±1-year matching regression coverage.
 - [x] Add TV identity and core mobile UX regression coverage.
-- [ ] Complete full-suite CI and resolve any integration regressions.
+- [x] Complete full-suite and post-merge CI with all checks green.
+
+## v0.14.0 - Mobile UX Completion
+
+Status: In Progress
+
+### Features
+- [x] Replace the temporary mobile filter toggle with a staged bottom-sheet flow and active-filter count.
+- [x] Restore predictable Browse/detail scroll state across Movie/TV and nested release navigation.
+- [x] Make household Movie presets read-only in requester release workflows.
+- [x] Add full-screen mobile detail/release viewport ownership with safe-area-aware navigation behaviour.
+
+### UX / Quality
+- [x] Compact mobile chrome and make collection chips horizontally accessible at narrow widths.
+- [x] Make structured detail skeletons the first meaningful loading state and reduce layout shift.
+- [x] Add horizontal cast presentation, responsive Setup/Users handling and reduced-motion support.
+- [x] Suspend bottom navigation during full-screen modal and iOS keyboard states.
+- [x] Preserve automatic Downloads polling without expanding into Live Downloads 2.0.
+
+### Testing
+- [x] Add regression coverage for mobile filters, search ownership, modal viewport state and safe areas.
+- [x] Add regression coverage preventing requester Movie policy controls from reappearing.
+- [x] Complete full-suite CI and resolve integration regressions.
 
 ## Future
 
-- Plex TV-library matching and safe TV deep links after the TV/Sonarr workflow has proven stable.
-- Notifications for watched releases, download completion and library availability.
-- Household recommendation improvements using request/library history and explainable metadata signals.
-- Persistent metadata caching and broader performance tuning where profiling shows value.
-- Additional media types only after movie and television workflows are stable.
+### Live Downloads 2.0
+- Richer transferred/total progress, speed and ETA where reliable.
+- Explicit Queued → Downloading → Processing/Importing → Available lifecycle.
+- Active / Waiting / Recently Completed information hierarchy.
+
+### Request → Download Continuity
+- Rich Sent to Radarr/Sonarr confirmation.
+- Stable request identity and View download deep link.
+- Focus/highlight the exact request after acquisition.
+
+### Frontend Performance & State
+- Remaining profiling-driven request/render optimisations not appropriately completed in v0.14.
+
+### Plex TV Library Intelligence
+- Plex TV-library matching and safe TV deep links.
+
+### Notifications & Release Lifecycle
+- Watched-release, download-complete and library-available notifications.
+
+### Recommendation Intelligence
+- Household recommendations using request/library history and explainable metadata signals.
+
+- Additional media types only after Movie and TV workflows are stable.

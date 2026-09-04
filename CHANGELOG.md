@@ -6,6 +6,39 @@ All notable MediaHub changes are documented in this file.
 
 ### Added
 
+- **Mobile UX Completion** for Home Assistant ingress and iPhone-sized viewports.
+- Staged mobile filter bottom sheet with active-filter count, Clear filters and atomic Apply filters actions.
+- Clear-search action and a single capture-owned 450 ms mobile debounced search path.
+- Full-screen mobile detail/release viewport ownership with safe-area-aware bottom navigation suspension.
+- Browse/detail scroll-state preservation across nested Movie/TV release navigation.
+- Read-only household Movie preset summary in requester release workflows.
+- Dynamic viewport and reduced-motion handling for modern iOS/embedded browser behaviour.
+- Focused v0.14 regression coverage for modal ownership, filter state, requester preset protection and mobile state restoration.
+
+### Changed
+
+- Development version advanced to `0.14.0-dev`.
+- Deployed application entrypoint is now `app.mobile_ux_ui:app`.
+- Mobile collection controls are horizontally scrollable rather than clipped at narrow/keyboard-constrained widths.
+- Mobile Movie/TV details use a stable structured skeleton as the first meaningful loading state and reset new details to the top.
+- Cast presentation uses a horizontal swipe row at mobile widths.
+- Bottom navigation is suspended while full-screen mobile modals or the iOS keyboard own the lower viewport.
+- Mobile body/setup/users spacing is safe-area-aware so final content can scroll clear of persistent navigation.
+- Legacy requester Movie release-rule markup is removed from release-selection surfaces; household Setup Presets remain the only policy authority.
+- v0.13 roadmap status is reconciled to Delivered after successful post-merge CI.
+
+### Protected
+
+- Release identity validation still precedes Movie/TV download eligibility and rejected identity matches still receive no usable token.
+- The Dog Stars false-positive and Buffalo Soldiers ±1-year regressions remain protected.
+- Admin Setup Presets, duplicate protection, actor/person-ID discovery, infinite scrolling, Watch for release and recent-release fallback remain intact.
+- Radarr, Sonarr, Prowlarr, qBittorrent and Plex Movie integration remain unchanged in authority and scope.
+- Live Downloads 2.0 transfer-speed/ETA/lifecycle expansion remains deferred.
+
+## [0.13.0-dev] - 2026-09-04
+
+### Added
+
 - **Release Identity & Search Accuracy** validation before Movie/TV release eligibility and token issuance.
 - Deterministic Movie title normalisation, TV-episode/season rejection, year-confidence handling and explainable match states.
 - Regression protection for **The Dog Stars (2026)** false positives and **Buffalo Soldiers (2002)** ±1-year release naming.
@@ -17,22 +50,10 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.13.0-dev`.
-- Deployed application entrypoint is now `app.mobile_live_ui:app`.
-- Release identity validation now precedes quality, size, seeder and ranking policy.
+- Release identity validation precedes quality, size, seeder and ranking policy.
 - Rejected identity matches do not receive usable release tokens.
 - Mobile Browse hides the large introductory hero and gives catalogue content priority.
-- Advanced discovery filters are compacted behind a mobile Filters action.
-- Movie detail loading uses a structured skeleton instead of a single loading message.
-- Release cards are denser at narrow Home Assistant/iPhone widths.
 - Downloads refresh automatically while visible instead of relying on manual Refresh for normal progress updates.
-
-### Protected
-
-- Existing Admin Setup Presets remain authoritative and administrator-only.
-- Actor/person-ID discovery, infinite scrolling, release lifecycle, Watch for release, recent-release fallback, duplicate protection and opaque-token security remain enabled.
-- Radarr, Sonarr, Prowlarr, qBittorrent and Plex Movie integration remain the existing service authorities.
-- Plex TV-library matching remains deferred.
 
 ## [0.12.0-dev] - 2026-09-02
 
