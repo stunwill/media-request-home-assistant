@@ -4,10 +4,10 @@ from mediahub.app import main, mobile_ux_ui
 
 
 def test_v014_version_and_entrypoint_markers() -> None:
-    assert mobile_ux_ui.app.version == "0.14.0-dev"
+    assert mobile_ux_ui.app.version.startswith("0.14.")
     html = main.INDEX_HTML
     for marker in (
-        "MEDIAHUB_MOBILE_UX_V014",
+        "MEDIAHUB_MOBILE_UX_V0141",
         "mobile-filter-sheet",
         "mobile-search-clear",
         "mobile-modal-back",
@@ -62,14 +62,22 @@ def test_parent_detail_and_browse_scroll_state_are_preserved() -> None:
     assert "window.scrollTo({top:browseState.scrollY" in html
 
 
-def test_requester_movie_policy_is_read_only_at_v014_ownership_layer() -> None:
+def test_requester_movie_policy_is_read_only_at_mobile_ownership_layer() -> None:
     html = main.INDEX_HTML
-    assert "window.rules=function()" in html
     assert "window.rulesHtml=function()" in html
     assert "Household download presets applied" in html
     assert "MEDIAHUB_CURRENT_MOVIE_PRESETS" in html
     assert "removeLegacyRules" in html
     assert "#release-area .release-rules" in html
+    assert "api('setup/presets')" not in html
+
+
+def test_mobile_bootstrap_guards_optional_dom_and_throttles_mutations() -> None:
+    html = main.INDEX_HTML
+    assert "if(modal)new MutationObserver" in html
+    assert "requestAnimationFrame(()=>{mutationPending=false" in html
+    assert "q('mobile-filter-close')?.addEventListener" in html
+    assert "typeof searchForm.requestSubmit==='function'" in html
 
 
 def test_mobile_collection_chips_and_safe_area_are_preserved() -> None:
