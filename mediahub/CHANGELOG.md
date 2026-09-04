@@ -1,5 +1,19 @@
 # MediaHub Home Assistant Changelog
 
+## 0.14.0-dev
+
+- Completed the iPhone/Home Assistant ingress mobile UX pass.
+- Added a proper staged mobile filter sheet with active-filter count, Clear and Apply actions.
+- Fixed collection controls so Popular / Now Playing / Top Rated / Upcoming remain reachable at narrow widths and with the iOS keyboard open.
+- Added clear-search support and consolidated the mobile debounced search ownership.
+- Made Movie/TV details full-screen mobile surfaces with safe-area-aware Back/Close behaviour and suspended bottom navigation while a modal owns the viewport.
+- Improved structured detail loading and reduced scroll/layout jumps when details replace the skeleton.
+- Preserves Browse and parent-detail scroll position across nested release selection.
+- Uses horizontal cast presentation on mobile.
+- Corrected the requester Movie policy regression: maximum size, seeders and quality remain administrator-controlled household Presets rather than editable request controls.
+- Added safe-area-aware bottom content spacing, reduced-motion handling and dynamic visual viewport/keyboard behaviour.
+- Existing release identity, BEST MATCH, automatic Downloads polling, Admin Presets, Radarr, Sonarr, Prowlarr, qBittorrent, Plex Movie, actor search, infinite scrolling and Watch for release remain intact.
+
 ## 0.13.0-dev
 
 - Added release identity validation before Movie/TV releases can become downloadable.
