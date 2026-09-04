@@ -104,7 +104,7 @@ Status: In Progress
 ### Testing
 - [x] Add regression coverage for mobile filters, search ownership, modal viewport state and safe areas.
 - [x] Add regression coverage preventing requester Movie policy controls from reappearing.
-- [ ] Complete full-suite CI and resolve any integration regressions.
+- [x] Complete full-suite CI and resolve integration regressions.
 
 ## Future
 
