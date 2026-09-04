@@ -4,6 +4,25 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Home Assistant ingress freeze after v0.14**: hardened the final mobile UX bootstrap so missing/late DOM elements cannot abort startup.
+- Removed an unnecessary requester-side `/api/setup/presets` bootstrap request from the mobile layer; household download policy remains server-authoritative.
+- Throttled mobile DOM reconciliation work to animation frames instead of performing repeated full-document work on every mutation.
+- Added null-safe modal/filter/search initialisation to avoid a single mobile enhancement preventing the application from becoming interactive.
+
+### Changed
+
+- Development version advanced to `0.14.1-dev`.
+- Deployed application entrypoint remains `app.mobile_ux_ui:app`.
+
+### Protected
+
+- v0.14 Mobile UX Completion behaviour remains intact, including filter sheet, safe-area handling, modal ownership, Browse/detail state restoration and read-only requester policy presentation.
+- Release identity validation, administrator Presets, duplicate protection, Downloads polling and all service integration boundaries remain unchanged.
+
+## [0.14.0-dev] - 2026-09-04
+
 ### Added
 
 - **Mobile UX Completion** for Home Assistant ingress and iPhone-sized viewports.
@@ -17,8 +36,7 @@ All notable MediaHub changes are documented in this file.
 
 ### Changed
 
-- Development version advanced to `0.14.0-dev`.
-- Deployed application entrypoint is now `app.mobile_ux_ui:app`.
+- Deployed application entrypoint became `app.mobile_ux_ui:app`.
 - Mobile collection controls are horizontally scrollable rather than clipped at narrow/keyboard-constrained widths.
 - Mobile Movie/TV details use a stable structured skeleton as the first meaningful loading state and reset new details to the top.
 - Cast presentation uses a horizontal swipe row at mobile widths.
@@ -26,14 +44,6 @@ All notable MediaHub changes are documented in this file.
 - Mobile body/setup/users spacing is safe-area-aware so final content can scroll clear of persistent navigation.
 - Legacy requester Movie release-rule markup is removed from release-selection surfaces; household Setup Presets remain the only policy authority.
 - v0.13 roadmap status is reconciled to Delivered after successful post-merge CI.
-
-### Protected
-
-- Release identity validation still precedes Movie/TV download eligibility and rejected identity matches still receive no usable token.
-- The Dog Stars false-positive and Buffalo Soldiers ±1-year regressions remain protected.
-- Admin Setup Presets, duplicate protection, actor/person-ID discovery, infinite scrolling, Watch for release and recent-release fallback remain intact.
-- Radarr, Sonarr, Prowlarr, qBittorrent and Plex Movie integration remain unchanged in authority and scope.
-- Live Downloads 2.0 transfer-speed/ETA/lifecycle expansion remains deferred.
 
 ## [0.13.0-dev] - 2026-09-04
 
@@ -67,39 +77,3 @@ All notable MediaHub changes are documented in this file.
 
 - Search/download defaults are centrally managed household presets.
 - Movie and TV release eligibility uses saved administrator presets.
-
-## [0.11.0-dev] - 2026-09-02
-
-### Added
-
-- **TV Release Selection & Size-Aware Downloads** for season packs and individual episodes.
-- Sonarr-backed episode availability and interactive release selection.
-- Configurable hard TV size limits and opaque TV release tokens.
-
-## [0.10.0-dev] - 2026-08-30
-
-### Added
-
-- Separate Movies and TV Shows Browse modes.
-- TMDb TV discovery and Sonarr request workflow.
-- Automatic catalogue infinite scrolling.
-
-## [0.9.0-dev] - 2026-08-25
-
-### Added
-
-- Optional Plex Movie library intelligence.
-- Shared rich Movie details and actor discovery.
-- Release-aware Movie lifecycle and Radarr/Prowlarr/qBittorrent reconciliation.
-
-## [0.1.1-dev] - 2026-08-04
-
-### Added
-
-- Home Assistant Ingress-compatible landing page and service status display.
-
-## [0.1.0] - 2026-08-04
-
-### Added
-
-- Initial Home Assistant add-on, FastAPI, SQLite, request, audit, and storage-protection foundation.
