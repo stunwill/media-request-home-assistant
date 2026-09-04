@@ -185,8 +185,8 @@ def test_setup_is_split_into_service_connections_and_presets() -> None:
     assert "Household Movie download presets from Setup are applied automatically" in html
 
 
-def test_v012_version_and_routes_registered() -> None:
-    assert preset_ui.app.version == "0.12.0-dev"
+def test_v012_routes_remain_registered_after_later_versions() -> None:
+    assert preset_ui.app.version.endswith("-dev")
     paths = {route.path for route in preset_ui.app.routes}
     assert "/api/setup/presets" in paths
     assert "/api/setup/presets/reset" in paths
