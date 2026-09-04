@@ -50,7 +50,7 @@ jobs:
           from pathlib import Path
           import re
           import yaml
-          from mediahub.app.preset_ui import app
+          from mediahub.app.mobile_live_ui import app
           manifest_path = Path("mediahub/config.yaml")
           roadmap_path = Path("ROADMAP.md")
           root_changelog_path = Path("CHANGELOG.md")
@@ -81,7 +81,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import yaml
-          from mediahub.app.preset_ui import app
+          from mediahub.app.mobile_live_ui import app
           expected = str(yaml.safe_load(Path("mediahub/config.yaml").read_text())["version"])
           assert app.title == "MediaHub"
           assert app.version == expected
