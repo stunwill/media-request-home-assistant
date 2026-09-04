@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 
 _TV_EPISODE_PATTERNS = (
@@ -74,8 +74,6 @@ def _title_prefix_match(release_title: str, candidate_title: str) -> tuple[bool,
         return True, 100
     release_set, title_set = set(release_tokens), set(title_tokens)
     overlap = len(release_set & title_set) / max(1, len(title_set))
-    if overlap == 1 and all(token in release_tokens[: max(len(title_tokens) + 2, 4)] for token in title_tokens):
-        return True, 82
     return False, int(overlap * 60)
 
 
@@ -101,14 +99,14 @@ def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> Id
 
     requested_year = int(movie.get("year") or 0) if str(movie.get("year") or "").isdigit() else None
     release_year = _release_year(raw)
-    reasons = ["Strong title match" if best_score >= 95 else "Acceptable title match"]
+    reasons = ["Strong title match"]
     score = best_score
     if requested_year and release_year:
         delta = abs(requested_year - release_year)
         if delta == 0:
             score += 20
             reasons.append("Release year matches")
-        elif delta == 1 and best_score >= 95:
+        elif delta == 1:
             score += 10
             reasons.append("Year within accepted range")
         elif delta >= 2:
