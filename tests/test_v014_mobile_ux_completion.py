@@ -3,6 +3,11 @@ from __future__ import annotations
 from mediahub.app import main, mobile_ux_ui
 
 
+def _mobile_layer(html: str) -> str:
+    marker = "if(window.MEDIAHUB_MOBILE_UX_V0141)return"
+    return html.split(marker, 1)[1] if marker in html else html
+
+
 def test_v014_version_and_entrypoint_markers() -> None:
     assert mobile_ux_ui.app.version.startswith("0.14.")
     html = main.INDEX_HTML
@@ -64,20 +69,24 @@ def test_parent_detail_and_browse_scroll_state_are_preserved() -> None:
 
 def test_requester_movie_policy_is_read_only_at_mobile_ownership_layer() -> None:
     html = main.INDEX_HTML
-    assert "window.rulesHtml=function()" in html
-    assert "Household download presets applied" in html
-    assert "MEDIAHUB_CURRENT_MOVIE_PRESETS" in html
-    assert "removeLegacyRules" in html
-    assert "#release-area .release-rules" in html
-    assert "api('setup/presets')" not in html
+    mobile_html = _mobile_layer(html)
+    assert "window.rulesHtml=function()" in mobile_html
+    assert "Household download presets applied" in mobile_html
+    assert "MEDIAHUB_CURRENT_MOVIE_PRESETS" in mobile_html
+    assert "removeLegacyRules" in mobile_html
+    assert "#release-area .release-rules" in mobile_html
+    # Admin Setup legitimately reads /api/setup/presets. The requester/mobile
+    # bootstrap must not perform that setup request during ingress startup.
+    assert "api('setup/presets')" not in mobile_html
 
 
 def test_mobile_bootstrap_guards_optional_dom_and_throttles_mutations() -> None:
     html = main.INDEX_HTML
-    assert "if(modal)new MutationObserver" in html
-    assert "requestAnimationFrame(()=>{mutationPending=false" in html
-    assert "q('mobile-filter-close')?.addEventListener" in html
-    assert "typeof searchForm.requestSubmit==='function'" in html
+    mobile_html = _mobile_layer(html)
+    assert "if(modal)new MutationObserver" in mobile_html
+    assert "requestAnimationFrame(()=>{mutationPending=false" in mobile_html
+    assert "q('mobile-filter-close')?.addEventListener" in mobile_html
+    assert "typeof searchForm.requestSubmit==='function'" in mobile_html
 
 
 def test_mobile_collection_chips_and_safe_area_are_preserved() -> None:
