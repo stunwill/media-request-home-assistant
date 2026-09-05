@@ -38,3 +38,52 @@ options:
     tmdb_api_key: ""
     prowlarr_url: ""
     prowlarr_api_key: ""
+    radarr_url: ""
+    radarr_api_key: ""
+    radarr_root_folder_path: ""
+    radarr_quality_profile_id: 0
+    sonarr_url: ""
+    sonarr_api_key: ""
+    sonarr_root_folder_path: ""
+    sonarr_quality_profile_id: 0
+    qbittorrent_url: ""
+    qbittorrent_auth_method: password
+    qbittorrent_api_key: ""
+    qbittorrent_username: ""
+    qbittorrent_password: ""
+    plex_url: ""
+    plex_token: ""
+    plex_library_key: ""
+    plex_machine_identifier: ""
+schema:
+  storage:
+    media_path: str
+    minimum_free_gb: float
+    safety_margin_gb: float
+    reservation_multiplier: float
+  approvals:
+    auto_approve: bool
+  tv_downloads:
+    maximum_season_size_gb: float
+    maximum_episode_size_gb: float
+  integrations:
+    tmdb_api_key: password
+    prowlarr_url: str
+    prowlarr_api_key: password
+    radarr_url: str
+    radarr_api_key: password
+    radarr_root_folder_path: str
+    radarr_quality_profile_id: int
+    sonarr_url: str
+    sonarr_api_key: password
+    sonarr_root_folder_path: str
+    sonarr_quality_profile_id: int
+    qbittorrent_url: str
+    qbittorrent_auth_method: list(password|api_key)
+    qbittorrent_api_key: password
+    qbittorrent_username: str
+    qbittorrent_password: password
+    plex_url: str
+    plex_token: password
+    plex_library_key: str
+    plex_machine_identifier: str
