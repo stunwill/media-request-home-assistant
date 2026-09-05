@@ -295,13 +295,25 @@ def test_dog_stars_and_buffalo_soldiers_regressions_remain_protected() -> None:
     assert tolerated.eligible is True
 
 
-def test_opaque_tokens_are_only_created_for_eligible_movie_results() -> None:
-    source = release_identity_main.search_movie_releases.__code__.co_names
-    assert "cache_release" in source
-    assert "eligible" in release_identity_main.search_movie_releases.__code__.co_consts or True
+def test_opaque_tokens_are_removed_from_rejected_tv_results() -> None:
+    rejected = release_identity_main._strip_token_if_rejected({
+        "eligible": False,
+        "release_token": "opaque-secret-token",
+    })
+    eligible = release_identity_main._strip_token_if_rejected({
+        "eligible": True,
+        "release_token": "opaque-allowed-token",
+    })
+    assert "release_token" not in rejected
+    assert eligible["release_token"] == "opaque-allowed-token"
+
+
+def test_movie_search_only_caches_tokens_inside_eligible_branches() -> None:
+    source_names = release_identity_main.search_movie_releases.__code__.co_names
+    assert "cache_release" in source_names
     html = main.INDEX_HTML
-    assert "data-token" in html
-    assert "data-token" not in "<button disabled>Unavailable</button>"
+    assert "data-token=\"${esc(release.release_token||'')}\"" in html
+    assert "button[disabled]" in html
 
 
 def test_mobile_release_policy_read_is_deferred_until_release_selection() -> None:
