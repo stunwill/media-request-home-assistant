@@ -171,18 +171,22 @@ def test_presets_routes_are_admin_dependencies() -> None:
         assert "administrator" in dependency_names
 
 
-def test_setup_is_split_into_service_connections_and_presets() -> None:
+def test_setup_is_split_into_service_connections_and_download_presets() -> None:
     html = main.INDEX_HTML
     assert "Service Connections" in html
-    assert "Search & Download Presets" in html
+    assert "Download Presets" in html
     assert "Catalogue language" in html
     assert "English only" in html
-    assert "Maximum movie size (GB)" in html
+    assert "Maximum Movie release size (GB)" in html
+    assert "Minimum seeders" in html
+    assert "Allow temporary lower-quality releases for recent titles" in html
+    assert "Fallback window (days)" in html
     assert "Maximum season pack (GB)" in html
     assert "Maximum episode (GB)" in html
-    assert "Reset to defaults" in html
+    assert "Save download presets" in html
+    assert "Reset download presets to defaults" in html
     assert "Admin only" in html
-    assert "Household Movie download presets from Setup are applied automatically" in html
+    assert "Household download presets applied" in html
 
 
 def test_v012_routes_remain_registered_after_later_versions() -> None:
@@ -190,6 +194,7 @@ def test_v012_routes_remain_registered_after_later_versions() -> None:
     paths = {route.path for route in preset_ui.app.routes}
     assert "/api/setup/presets" in paths
     assert "/api/setup/presets/reset" in paths
+    assert "/api/download-presets" in paths
     assert "/api/tv/releases/grab" in paths
     assert "/api/movies/{tmdb_id}/releases" in paths
     assert "/api/setup/plex" in paths
