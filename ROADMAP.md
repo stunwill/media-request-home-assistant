@@ -56,14 +56,36 @@ Status: Delivered
 
 ## v0.14.1 - Home Assistant Ingress Freeze Correction
 
-Status: In Progress
+Status: Delivered
 
 ### Corrective scope
 - [x] Harden v0.14 mobile bootstrap against missing/late DOM elements.
 - [x] Remove unnecessary requester-side preset bootstrap work from initial page load.
 - [x] Throttle mutation reconciliation to animation frames.
 - [x] Preserve v0.14 mobile behaviour and server-side household preset authority.
-- [ ] Complete full-suite CI and post-merge verification.
+- [x] Complete full-suite CI and post-merge verification.
+
+## v0.14.2 - Download Presets & Release UX Corrections
+
+Status: In Progress
+
+### Corrective scope
+- [x] Restore the administrator Download Presets UI to the deployed mobile/Home Assistant entrypoint.
+- [x] Unify Movie and TV household policy under one administrator-managed Setup surface.
+- [x] Expose Movie resolution, maximum size, minimum seeders and recent-release fallback settings.
+- [x] Expose TV resolution, season-pack size, episode size and minimum seeder settings.
+- [x] Remove the competing standalone TV Downloads UI while preserving safe legacy migration.
+- [x] Prevent requester payloads from overriding server-side household Movie policy.
+- [x] Classify MediaHub policy, identity, Radarr/Sonarr, library/upgrade and release-availability exclusions separately.
+- [x] Replace the giant mobile rejection paragraph with a compact structured summary and meaningful unavailable-release labels.
+- [x] Correct Browse release-selection context so absent request metadata is omitted rather than fabricated.
+- [x] Keep BEST MATCH limited to genuinely eligible releases.
+
+### Regression protection
+- [x] Preserve The Dog Stars identity exclusions and Buffalo Soldiers ±1-year tolerance.
+- [x] Add Goosebumps regression coverage for MediaHub-policy-pass plus Radarr-cutoff rejection.
+- [x] Preserve opaque token, duplicate protection, Watch for release and recent-release fallback boundaries.
+- [ ] Complete the full GitHub Actions suite with all required checks green.
 
 ## Future
 
