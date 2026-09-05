@@ -92,6 +92,6 @@ def test_existing_core_markers_preserved() -> None:
     assert "IntersectionObserver" in html
     assert "MEDIAHUB_INFINITE_CATALOGUE" in html
     assert "Service Connections" in html
-    assert "Search & Download Presets" in html
+    assert "Download Presets" in html
     assert "Request best release" in html
     assert "Find season packs" in html
