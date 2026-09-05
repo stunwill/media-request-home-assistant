@@ -14,6 +14,7 @@ _MOBILE_UI = r"""
 </style>
 <script>
 (function(){
+  if(window.MEDIAHUB_MOBILE_LIVE_V013)return;window.MEDIAHUB_MOBILE_LIVE_V013=true;
   const search=document.getElementById('search');
   const searchForm=document.getElementById('search-form');
   let debounceTimer=null;
@@ -54,5 +55,5 @@ _MOBILE_UI = r"""
 </script>
 """
 
-if "mobile-bottom-nav" not in main.INDEX_HTML:
+if "MEDIAHUB_MOBILE_LIVE_V013" not in main.INDEX_HTML:
     main.INDEX_HTML = main.INDEX_HTML.replace("</body>", _MOBILE_UI + "\n</body>")
