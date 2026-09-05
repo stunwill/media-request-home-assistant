@@ -6,6 +6,47 @@ All notable MediaHub changes are documented in this file.
 
 ### Fixed
 
+- Restored the administrator **Download Presets** UI to the actual deployed `app.mobile_ux_ui:app` import chain after the mobile entrypoint stopped importing the v0.12 preset UI layer.
+- Removed the competing standalone **TV Downloads** Setup card and its active frontend submission path.
+- Corrected Browse → **Choose a release** so it does not render fabricated request metadata such as `Invalid Date`, `0%`, `0.00 GB` or `Not recorded` when no request exists.
+- Preserved unknown request size/progress as unknown instead of coercing them to real zero values.
+- Corrected release-rejection presentation so Radarr/Sonarr cutoff, library and upgrade decisions are not described as MediaHub household-preset failures.
+- Corrected BEST MATCH so only genuinely eligible release cards can receive the badge.
+
+### Added
+
+- Unified administrator **Download Presets** with separate **Movies** and **TV Shows** groups.
+- Movie controls for allowed 1080p/720p resolutions, maximum Movie release size, minimum seeders, recent-release fallback enablement and fallback window.
+- TV controls for allowed 1080p/720p resolutions, maximum season-pack size, maximum episode size and minimum seeders.
+- Clear save confirmation, server-side validation and scoped **Reset download presets to defaults** behaviour.
+- Safe read-only requester policy summary loaded only when release selection is opened.
+- Structured rejection categories for identity, MediaHub policy, Radarr/Sonarr, library/upgrade state, indexer/release availability and other failures.
+- Compact per-release primary rejection labels and a collapsed structured exclusion summary instead of the large raw-reason paragraph.
+- Regression coverage based on the demonstrated **Goosebumps (2015)** 1.60 GB / 44-seeder Radarr-cutoff example.
+- Additional regression coverage for household-policy persistence, legacy TV migration, administrator-only writes, request override prevention, invalid release-selection context, safe diagnostics, BEST MATCH eligibility, The Dog Stars and Buffalo Soldiers identity protections.
+
+### Changed
+
+- Development version advanced to `0.14.2-dev`.
+- Movie acquisition revalidates request payloads against the current administrator household policy, so requester-supplied size, resolution or seeder values cannot override Presets.
+- Legacy `tv_downloads` values remain only as upgrade compatibility data and are reconciled into the authoritative Presets structure.
+- TV release evaluation preserves MediaHub season/episode size rules while separately classifying Sonarr decisions.
+- Unavailable releases remain collapsed by default and display a meaningful rejection category rather than a generic `Rejected` label where a reason is known.
+- Release summaries count each unavailable candidate once by deterministic primary category to avoid misleading double-counting.
+- Setup mobile layout keeps one policy source of truth and retains existing Home Assistant ingress navigation and safe-area behaviour.
+
+### Protected
+
+- Release identity remains ahead of household quality/size/seeder eligibility and rejected identities receive no usable opaque release token.
+- **The Dog Stars (2026)** unrelated TV-release exclusions remain protected.
+- **Buffalo Soldiers (2002)** ±1-year strong-title tolerance remains protected.
+- Watch for release, recent-release fallback, duplicate request protection, Movie/TV Browse, actor/person search, infinite scrolling, Downloads reconciliation, Radarr, Sonarr, Prowlarr, qBittorrent, Plex Movie integration, authentication, roles and Home Assistant ingress remain in scope for regression testing.
+- MediaHub does not alter or bypass Radarr/Sonarr quality profiles, cutoffs or upgrade rules when household presets are relaxed.
+
+## [0.14.1-dev] - 2026-09-04
+
+### Fixed
+
 - **Home Assistant ingress freeze after v0.14**: hardened the final mobile UX bootstrap so missing/late DOM elements cannot abort startup.
 - Removed an unnecessary requester-side `/api/setup/presets` bootstrap request from the mobile layer; household download policy remains server-authoritative.
 - Throttled mobile DOM reconciliation work to animation frames instead of performing repeated full-document work on every mutation.

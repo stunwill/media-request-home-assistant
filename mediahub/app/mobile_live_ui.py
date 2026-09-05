@@ -14,6 +14,7 @@ _MOBILE_UI = r"""
 </style>
 <script>
 (function(){
+  if(window.MEDIAHUB_MOBILE_LIVE_V013)return;window.MEDIAHUB_MOBILE_LIVE_V013=true;
   const search=document.getElementById('search');
   const searchForm=document.getElementById('search-form');
   let debounceTimer=null;
@@ -35,10 +36,9 @@ _MOBILE_UI = r"""
   function compactReleaseArea(){
     const area=document.getElementById('release-area');if(!area)return;
     const releases=[...area.querySelectorAll('.release')];
-    const eligible=releases.filter(el=>!el.querySelector('.release-reasons')||!el.querySelector('.release-reasons')?.textContent?.trim());
-    if(eligible.length){eligible[0].classList.add('best-match');const h=eligible[0].querySelector('h4');if(h&&!eligible[0].querySelector('.best-badge'))h.insertAdjacentHTML('beforebegin','<span class="best-badge">BEST MATCH</span>');}
-    const rejected=releases.filter(el=>!eligible.includes(el));
-    if(rejected.length&&!area.querySelector('details.unavailable-releases')){const details=document.createElement('details');details.className='unavailable-releases';details.innerHTML=`<summary>Unavailable releases (${rejected.length})</summary>`;rejected.forEach(el=>details.appendChild(el));area.appendChild(details);}
+    releases.forEach(el=>{el.classList.remove('best-match');el.querySelector('.best-badge')?.remove();});
+    const eligible=releases.filter(el=>el.dataset.eligible==='true'&&!el.querySelector('button[disabled]'));
+    if(eligible.length){eligible[0].classList.add('best-match');const h=eligible[0].querySelector('h4');if(h)h.insertAdjacentHTML('beforebegin','<span class="best-badge">BEST MATCH</span>');}
   }
   const observer=new MutationObserver(compactReleaseArea);observer.observe(document.body,{subtree:true,childList:true});
 
@@ -55,5 +55,5 @@ _MOBILE_UI = r"""
 </script>
 """
 
-if "mobile-bottom-nav" not in main.INDEX_HTML:
+if "MEDIAHUB_MOBILE_LIVE_V013" not in main.INDEX_HTML:
     main.INDEX_HTML = main.INDEX_HTML.replace("</body>", _MOBILE_UI + "\n</body>")

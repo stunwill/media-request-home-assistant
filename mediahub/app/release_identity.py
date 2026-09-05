@@ -21,6 +21,23 @@ _RELEASE_MARKERS = {
     "atmos", "hdr", "dv", "remux", "proper", "repack", "extended", "directors", "cut",
 }
 
+REJECTION_PRECEDENCE = {
+    "identity": 0,
+    "library_upgrade": 1,
+    "arr": 2,
+    "mediahub_policy": 3,
+    "indexer_availability": 4,
+    "other": 5,
+}
+REJECTION_LABELS = {
+    "identity": "DOESN'T MATCH MEDIA",
+    "library_upgrade": "BLOCKED BY LIBRARY / UPGRADE STATE",
+    "arr": "BLOCKED BY MEDIA MANAGER",
+    "mediahub_policy": "BLOCKED BY MEDIAHUB PRESET",
+    "indexer_availability": "RELEASE UNAVAILABLE",
+    "other": "UNAVAILABLE",
+}
+
 
 @dataclass(frozen=True)
 class IdentityResult:
@@ -75,6 +92,110 @@ def _title_prefix_match(release_title: str, candidate_title: str) -> tuple[bool,
     release_set, title_set = set(release_tokens), set(title_tokens)
     overlap = len(release_set & title_set) / max(1, len(title_set))
     return False, int(overlap * 60)
+
+
+def _safe_diagnostic(value: Any) -> str | None:
+    text = " ".join(str(value or "").split()).strip()
+    if not text:
+        return None
+    lowered = text.casefold()
+    sensitive_markers = (
+        "api key", "apikey", "api_key", "token", "password", "credential", "magnet:",
+        "downloadurl", "download url", "guid", "http://", "https://",
+    )
+    return None if any(marker in lowered for marker in sensitive_markers) else text[:500]
+
+
+def rejection_detail(
+    category: str,
+    message: str,
+    *,
+    code: str,
+    service: str | None = None,
+    raw_message: str | None = None,
+) -> dict[str, Any]:
+    detail: dict[str, Any] = {
+        "category": category if category in REJECTION_PRECEDENCE else "other",
+        "code": code,
+        "message": str(message),
+    }
+    if service:
+        detail["service"] = service
+    safe_raw = _safe_diagnostic(raw_message)
+    if safe_raw and safe_raw != message:
+        detail["raw_message"] = safe_raw
+    return detail
+
+
+def classify_arr_rejection(reason: Any, *, service: str) -> dict[str, Any]:
+    raw = " ".join(str(reason or "").split()).strip() or f"{service} rejected this release"
+    lowered = raw.casefold()
+    library_markers = (
+        "meets cutoff", "cutoff", "quality profile does not allow upgrades", "does not allow upgrades",
+        "existing file", "release in queue", "already queued", "already exists", "upgrade",
+    )
+    unavailable_markers = (
+        "not enough seeders", "fewer than", "indexer", "unavailable", "not available",
+        "unable to parse", "unknown movie", "unknown series",
+    )
+    if any(marker in lowered for marker in library_markers):
+        message = "Existing or queued library quality currently prevents this upgrade."
+        return rejection_detail(
+            "library_upgrade",
+            message,
+            code="library_cutoff_or_upgrade",
+            service=service,
+            raw_message=raw,
+        )
+    if any(marker in lowered for marker in unavailable_markers):
+        return rejection_detail(
+            "indexer_availability",
+            raw,
+            code="release_unavailable",
+            service=service,
+            raw_message=raw,
+        )
+    return rejection_detail(
+        "arr",
+        raw,
+        code="media_manager_rejection",
+        service=service,
+        raw_message=raw,
+    )
+
+
+def primary_rejection(details: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not details:
+        return None
+    return min(
+        details,
+        key=lambda item: REJECTION_PRECEDENCE.get(str(item.get("category") or "other"), 99),
+    )
+
+
+def with_rejection_details(
+    result: dict[str, Any],
+    details: list[dict[str, Any]],
+) -> dict[str, Any]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for detail in details:
+        key = (
+            str(detail.get("category") or "other"),
+            str(detail.get("code") or ""),
+            str(detail.get("message") or ""),
+        )
+        if key not in seen:
+            seen.add(key)
+            deduped.append(detail)
+    result["rejection_details"] = deduped
+    result["policy_rejections"] = [str(item["message"]) for item in deduped]
+    primary = primary_rejection(deduped)
+    result["primary_rejection"] = primary
+    result["rejection_label"] = (
+        REJECTION_LABELS.get(str(primary.get("category")), "UNAVAILABLE") if primary else None
+    )
+    return result
 
 
 def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> IdentityResult:
@@ -146,12 +267,24 @@ def validate_tv_release(
 
 def apply_identity(public: dict[str, Any], identity: IdentityResult) -> dict[str, Any]:
     result = dict(public)
-    rejections = [str(value) for value in result.get("policy_rejections") or []]
+    details = [dict(item) for item in result.get("rejection_details") or []]
+    if not details:
+        details = [
+            rejection_detail("other", str(value), code="legacy_rejection")
+            for value in result.get("policy_rejections") or []
+        ]
     if not identity.eligible:
-        rejections.extend(identity.reasons)
+        details.extend(
+            rejection_detail(
+                "identity",
+                str(reason),
+                code="identity_mismatch",
+            )
+            for reason in identity.reasons
+        )
     result["match_state"] = identity.state
     result["match_score"] = identity.score
     result["match_reasons"] = list(identity.reasons)
-    result["policy_rejections"] = list(dict.fromkeys(rejections))
-    result["eligible"] = identity.eligible and not result["policy_rejections"]
+    with_rejection_details(result, details)
+    result["eligible"] = identity.eligible and not result["rejection_details"]
     return result

@@ -1,5 +1,22 @@
 # MediaHub Home Assistant Changelog
 
+## 0.14.2-dev
+
+- Restored the administrator **Download Presets** UI to the deployed Home Assistant ingress entrypoint.
+- Unified Movie and TV household policy under one administrator-managed Download Presets interface.
+- Added editable Movie resolution, maximum-size, minimum-seeder and recent-release fallback settings.
+- Added editable TV resolution, season-pack size, episode size and minimum-seeder settings.
+- Removed the competing standalone **TV Downloads** Setup card while preserving legacy-setting migration compatibility.
+- Added clear preset save confirmation, validation and scoped reset-to-defaults behaviour.
+- Enforced current Movie household presets again when a release is acquired, preventing requester payload overrides.
+- Classified release exclusions as identity, MediaHub preset, Radarr/Sonarr, library/upgrade, availability or other reasons.
+- Replaced the large raw rejection-summary paragraph with a compact structured exclusion summary.
+- Kept unavailable releases collapsed and gave each unavailable card a meaningful primary rejection label.
+- Corrected the Goosebumps-style case where a small, well-seeded 1080p release is blocked by Radarr cutoff/library state rather than MediaHub's size preset.
+- Corrected Browse release selection so missing request data does not appear as `Invalid Date`, fake `0%`, fake `0.00 GB` or `Not recorded`.
+- BEST MATCH now applies only to genuinely eligible releases.
+- Preserved The Dog Stars identity safety, Buffalo Soldiers ±1-year tolerance, opaque tokens, duplicate protection, Watch for release, Radarr, Sonarr, Prowlarr, qBittorrent, Plex Movie integration and Home Assistant ingress behaviour.
+
 ## 0.14.1-dev
 
 - Fixed a Home Assistant ingress freeze introduced by the v0.14 mobile UX layer.

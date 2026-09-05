@@ -4,15 +4,15 @@ from mediahub.app import main, mobile_ux_ui
 
 
 def _mobile_layer(html: str) -> str:
-    marker = "if(window.MEDIAHUB_MOBILE_UX_V0141)return"
+    marker = "if(window.MEDIAHUB_MOBILE_UX_V0142)return"
     return html.split(marker, 1)[1] if marker in html else html
 
 
 def test_v014_version_and_entrypoint_markers() -> None:
-    assert mobile_ux_ui.app.version.startswith("0.14.")
+    assert mobile_ux_ui.app.version == "0.14.2-dev"
     html = main.INDEX_HTML
     for marker in (
-        "MEDIAHUB_MOBILE_UX_V0141",
+        "MEDIAHUB_MOBILE_UX_V0142",
         "mobile-filter-sheet",
         "mobile-search-clear",
         "mobile-modal-back",
@@ -73,10 +73,12 @@ def test_requester_movie_policy_is_read_only_at_mobile_ownership_layer() -> None
     assert "window.rulesHtml=function()" in mobile_html
     assert "Household download presets applied" in mobile_html
     assert "MEDIAHUB_CURRENT_MOVIE_PRESETS" in mobile_html
+    assert "loadReadOnlyPolicy" in mobile_html
+    assert "api('download-presets')" in mobile_html
     assert "removeLegacyRules" in mobile_html
     assert "#release-area .release-rules" in mobile_html
-    # Admin Setup legitimately reads /api/setup/presets. The requester/mobile
-    # bootstrap must not perform that setup request during ingress startup.
+    # The requester/mobile layer may read the safe read-only policy endpoint when
+    # release selection is opened. It must never call the administrator setup API.
     assert "api('setup/presets')" not in mobile_html
 
 
@@ -105,6 +107,6 @@ def test_existing_v013_safety_and_live_download_markers_remain() -> None:
         "IntersectionObserver",
         "MEDIAHUB_INFINITE_CATALOGUE",
         "Service Connections",
-        "Search & Download Presets",
+        "Download Presets",
     ):
         assert marker in html

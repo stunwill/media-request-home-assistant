@@ -6,7 +6,7 @@ from typing import Any, Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from . import catalogue_fixes, enhanced_main, main, media_services, settings, tv_release_selection, tv_release_ui, tv_services
+from . import catalogue_fixes, enhanced_main, main, media_services, release_identity, settings, tv_release_selection, tv_release_ui, tv_services
 
 app = tv_release_ui.app
 app.version = "0.12.0-dev"
@@ -116,7 +116,16 @@ def movie_rules() -> main.ReleaseRules:
     )
 
 
+def public_download_presets() -> dict[str, Any]:
+    presets = load_presets()
+    return {
+        "movies": dict(presets["movies"]),
+        "tv": dict(presets["tv"]),
+    }
+
+
 _original_search_movie_releases = enhanced_main.search_movie_releases
+_original_request_movie = enhanced_main.request_movie
 _original_is_recent_movie = enhanced_main.is_recent_movie
 _original_tv_release_public = tv_release_selection._release_public
 
@@ -129,6 +138,21 @@ async def _preset_search_movie_releases(
     movie: dict[str, Any] | None = None,
 ):
     return await _original_search_movie_releases(tmdb_id, movie_rules(), user_id, movie=movie)
+
+
+async def _preset_request_movie(
+    tmdb_id: int,
+    payload: main.MovieRequestCreate,
+    principal: main.CurrentUser,
+) -> dict[str, Any]:
+    rules = movie_rules()
+    safe_payload = payload.model_copy(update={
+        "maximum_size_gb": rules.maximum_size_gb,
+        "minimum_seeders": rules.minimum_seeders,
+        "quality_mode": rules.quality_mode,
+        "require_1080p": rules.require_1080p,
+    })
+    return await _original_request_movie(tmdb_id, safe_payload, principal)
 
 
 def _preset_is_recent_movie(movie: dict[str, Any], *, today=None) -> bool:
@@ -153,19 +177,59 @@ def _preset_tv_policy(_options: dict[str, Any] | None = None) -> dict[str, float
     }
 
 
+def _legacy_tv_rejection_detail(reason: str, item: dict[str, Any]) -> dict[str, Any]:
+    lowered = reason.casefold()
+    raw_arr = {str(value) for value in item.get("rejections") or []}
+    if reason in raw_arr:
+        return release_identity.classify_arr_rejection(reason, service="Sonarr")
+    if "exceeds the" in lowered and "tv" in lowered and "limit" in lowered:
+        return release_identity.rejection_detail(
+            "mediahub_policy", reason, code="tv_maximum_size"
+        )
+    if "mediahub requires" in lowered or "resolution is not enabled" in lowered:
+        return release_identity.rejection_detail(
+            "mediahub_policy", reason, code="tv_resolution"
+        )
+    if "fewer than" in lowered and "seeders" in lowered:
+        return release_identity.rejection_detail(
+            "mediahub_policy", reason, code="tv_minimum_seeders"
+        )
+    if "size is unavailable" in lowered or "seeder count is unavailable" in lowered:
+        return release_identity.rejection_detail(
+            "indexer_availability", reason, code="tv_release_metadata_unavailable"
+        )
+    if "sonarr does not allow" in lowered:
+        return release_identity.rejection_detail(
+            "arr", reason, code="sonarr_download_not_allowed", service="Sonarr"
+        )
+    return release_identity.rejection_detail("other", reason, code="tv_legacy_rejection")
+
+
 def _preset_tv_release_public(item: dict[str, Any], *, limit_gb: float, scope: Literal["season", "episode"]) -> dict[str, Any]:
     result = _original_tv_release_public(item, limit_gb=limit_gb, scope=scope)
+    details = [
+        _legacy_tv_rejection_detail(str(value), item)
+        for value in result.get("policy_rejections") or []
+    ]
     tv = load_presets()["tv"]
     quality = str(result.get("quality") or "").casefold()
     allowed = [str(value).casefold() for value in tv["allowed_resolutions"]]
     if not any(resolution in quality for resolution in allowed):
-        result["policy_rejections"].append("Release resolution is not enabled in MediaHub Presets")
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy",
+            "Release resolution is not enabled in MediaHub Presets",
+            code="tv_resolution",
+        ))
     minimum_seeders = int(tv["minimum_seeders"])
     seeders = result.get("seeders")
     if minimum_seeders and seeders is not None and int(seeders) < minimum_seeders:
-        result["policy_rejections"].append(f"Release has fewer than {minimum_seeders} seeders")
-    result["policy_rejections"] = list(dict.fromkeys(result["policy_rejections"]))
-    result["eligible"] = not result["policy_rejections"]
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy",
+            f"Release has fewer than {minimum_seeders} seeders",
+            code="tv_minimum_seeders",
+        ))
+    release_identity.with_rejection_details(result, details)
+    result["eligible"] = not result["rejection_details"]
     return result
 
 
@@ -199,6 +263,13 @@ media_services.TmdbClient._get = _movie_get_with_language
 tv_services.TmdbTvClient._get = _tv_get_with_language
 
 
+def _replace_route(path: str, method: str, endpoint: Any) -> None:
+    enhanced_main._replace_route(path, method, endpoint)
+
+
+_replace_route("/api/movies/{tmdb_id}/request", "POST", _preset_request_movie)
+
+
 async def get_presets(_: main.Administrator) -> dict[str, Any]:
     return load_presets()
 
@@ -214,6 +285,28 @@ async def restore_presets(_: main.Administrator) -> dict[str, Any]:
     return reset_presets()
 
 
+async def get_download_policy(_: main.CurrentUser) -> dict[str, Any]:
+    return public_download_presets()
+
+
+async def legacy_tv_policy(_: main.CurrentUser) -> dict[str, float]:
+    return _preset_tv_policy()
+
+
+async def update_legacy_tv_policy(payload: tv_release_selection.TvPolicyUpdate, _: main.Administrator) -> dict[str, float]:
+    current = load_presets()
+    current["tv"]["maximum_season_size_gb"] = payload.maximum_season_size_gb
+    current["tv"]["maximum_episode_size_gb"] = payload.maximum_episode_size_gb
+    saved = save_presets(PresetsUpdate.model_validate(current))
+    return {
+        "maximum_season_size_gb": float(saved["tv"]["maximum_season_size_gb"]),
+        "maximum_episode_size_gb": float(saved["tv"]["maximum_episode_size_gb"]),
+    }
+
+
 app.add_api_route("/api/setup/presets", get_presets, methods=["GET"])
 app.add_api_route("/api/setup/presets", put_presets, methods=["PUT"])
 app.add_api_route("/api/setup/presets/reset", restore_presets, methods=["POST"])
+app.add_api_route("/api/download-presets", get_download_policy, methods=["GET"])
+_replace_route("/api/setup/tv-downloads", "GET", legacy_tv_policy)
+_replace_route("/api/setup/tv-downloads", "PUT", update_legacy_tv_policy)
