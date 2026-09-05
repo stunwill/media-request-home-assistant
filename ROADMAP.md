@@ -85,7 +85,7 @@ Status: In Progress
 - [x] Preserve The Dog Stars identity exclusions and Buffalo Soldiers ±1-year tolerance.
 - [x] Add Goosebumps regression coverage for MediaHub-policy-pass plus Radarr-cutoff rejection.
 - [x] Preserve opaque token, duplicate protection, Watch for release and recent-release fallback boundaries.
-- [ ] Complete the full GitHub Actions suite with all required checks green.
+- [x] Complete the full GitHub Actions suite with all required checks green.
 
 ## Future
 
