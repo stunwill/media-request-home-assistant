@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from . import main, mobile_live_ui
+from . import main, mobile_live_ui, preset_ui
 
 app = mobile_live_ui.app
-app.version = "0.14.1-dev"
+app.version = "0.14.2-dev"
 
 _MOBILE_UX_UI = r"""
 <style>
@@ -15,6 +15,7 @@ _MOBILE_UX_UI = r"""
   .mobile-filter-toggle{align-items:center;gap:8px}.filter-count{min-width:22px;height:22px;border-radius:99px;display:inline-grid;place-items:center;background:#2c3445;font-size:.7rem}
   .detail-skeleton{min-height:70dvh}.detail-skeleton .skeleton.hero{aspect-ratio:16/9;height:auto}.detail-skeleton .skeleton.cast{height:132px}
   .mobile-modal-back{display:none}.household-policy-summary{margin:10px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:#0d1119;color:var(--muted);font-size:.78rem;line-height:1.45}
+  .release-summary-compact{display:grid;gap:6px;margin:10px 0 14px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:#0d1119;font-size:.78rem}.release-summary-compact strong{color:var(--text)}.release-summary-row{display:flex;justify-content:space-between;gap:12px;color:var(--muted)}.release-primary-reason{margin-top:8px;color:#ef7088;font-size:.78rem;line-height:1.4}.release-primary-reason strong{display:block;font-size:.69rem;letter-spacing:.07em;margin-bottom:3px}.release-diagnostics{margin-top:7px;color:var(--muted)}.release-diagnostics summary{cursor:pointer}.release-diagnostics div{margin-top:5px}
   .mobile-bottom-nav.is-suspended{display:none!important}body.modal-open{overflow:hidden}
   @media(max-width:760px){
     body{min-height:100dvh;padding-bottom:calc(88px + env(safe-area-inset-bottom))}.topbar{min-height:54px;padding-block:7px}.topbar .brand img{width:124px}.shell{padding-top:8px;padding-bottom:calc(92px + env(safe-area-inset-bottom))}
@@ -27,7 +28,7 @@ _MOBILE_UX_UI = r"""
 </style>
 <script>
 (function(){
-  if(window.MEDIAHUB_MOBILE_UX_V0141)return;window.MEDIAHUB_MOBILE_UX_V0141=true;
+  if(window.MEDIAHUB_MOBILE_UX_V0142)return;window.MEDIAHUB_MOBILE_UX_V0142=true;
   const q=id=>document.getElementById(id),mobile=()=>matchMedia('(max-width:760px)').matches;
   const modal=q('modal'),dialog=modal?.querySelector('.dialog'),detail=q('detail'),nav=document.querySelector('.mobile-bottom-nav');
   const browseState={scrollY:0,detailScroll:0,detailKind:null,detailId:null};let detailGeneration=0;const detailCache=new Map();
@@ -54,10 +55,12 @@ _MOBILE_UX_UI = r"""
   document.addEventListener('click',event=>{const target=event.target.closest('#choose-release,[data-find-season-releases],[data-find-episode-releases],.choose-release');if(!target||!dialog)return;browseState.detailScroll=dialog.scrollTop;const snapshot=detail?.innerHTML;window.MEDIAHUB_PARENT_DETAIL_RESTORE=()=>{if(snapshot&&detail){detail.innerHTML=snapshot;dialog.scrollTop=browseState.detailScroll;}window.MEDIAHUB_PARENT_DETAIL_RESTORE=null;};},true);
   const nativeClose=window.closeModal;if(typeof nativeClose==='function')window.closeModal=function(){detailGeneration++;window.MEDIAHUB_PARENT_DETAIL_RESTORE=null;const result=nativeClose();suspendNav(false);requestAnimationFrame(()=>window.scrollTo({top:browseState.scrollY||0,behavior:'instant'}));return result;};
 
-  // Keep request policy server-authoritative. Requester UI only renders a read-only summary when preset data is available through existing setup flows.
+  async function loadReadOnlyPolicy(){if(window.MEDIAHUB_CURRENT_MOVIE_PRESETS)return;try{const policy=await api('download-presets');window.MEDIAHUB_CURRENT_MOVIE_PRESETS=policy.movies||null;}catch(_error){}}
   window.rulesHtml=function(){const p=window.MEDIAHUB_CURRENT_MOVIE_PRESETS;if(!p)return '<div class="household-policy-summary"><strong>Household download presets applied</strong></div>';const maxSize=Number(p.maximum_size_gb||0).toLocaleString(undefined,{maximumFractionDigits:2});const seeders=Number(p.minimum_seeders||0);return `<div class="household-policy-summary"><strong>Household download presets applied</strong><br>${(p.allowed_resolutions||[]).join(' / ')} · max ${maxSize} GB · minimum ${seeders} seeder${seeders===1?'':'s'}</div>`;};
+  document.addEventListener('click',event=>{if(event.target.closest('#choose-release,#search-anyway'))loadReadOnlyPolicy();},true);
   function removeLegacyRules(){document.querySelectorAll('#release-area .release-rules,.release-rules[data-request-rules],#release-area [data-rule-field]').forEach(el=>el.remove());}
-  let mutationPending=false;const refreshDerivedUi=()=>{if(mutationPending)return;mutationPending=true;requestAnimationFrame(()=>{mutationPending=false;removeLegacyRules();updateFilterButton();document.querySelectorAll('.poster img,.cast-card img').forEach(img=>{if(!img.loading)img.loading='lazy';});});};new MutationObserver(refreshDerivedUi).observe(document.body,{subtree:true,childList:true});removeLegacyRules();
+  function improveReleaseCards(){const area=q('release-area');if(!area)return;area.querySelectorAll('.release').forEach(card=>{const disabled=!!card.querySelector('button[disabled]');card.dataset.eligible=disabled?'false':'true';});}
+  let mutationPending=false;const refreshDerivedUi=()=>{if(mutationPending)return;mutationPending=true;requestAnimationFrame(()=>{mutationPending=false;removeLegacyRules();improveReleaseCards();updateFilterButton();document.querySelectorAll('.poster img,.cast-card img').forEach(img=>{if(!img.loading)img.loading='lazy';});});};new MutationObserver(refreshDerivedUi).observe(document.body,{subtree:true,childList:true});removeLegacyRules();
   document.addEventListener('click',event=>{const button=event.target.closest('#release-area .button,[data-release-token]');if(!button)return;const area=q('release-area');if(!area||button.disabled)return;requestAnimationFrame(()=>{if(/requesting/i.test(button.textContent||''))area.querySelectorAll('button').forEach(other=>{if(other!==button)other.disabled=true;});});},true);
 
   const vv=window.visualViewport;function keyboardState(){if(!vv||!mobile())return;const keyboard=Math.max(0,window.innerHeight-vv.height-vv.offsetTop)>120;nav?.classList.toggle('is-suspended',keyboard||!!(modal&&!modal.classList.contains('hidden')));document.documentElement.style.setProperty('--mediahub-vvh',`${vv.height}px`);}vv?.addEventListener('resize',keyboardState);vv?.addEventListener('scroll',keyboardState);keyboardState();
@@ -65,5 +68,5 @@ _MOBILE_UX_UI = r"""
 </script>
 """
 
-if "MEDIAHUB_MOBILE_UX_V0141" not in main.INDEX_HTML:
+if "MEDIAHUB_MOBILE_UX_V0142" not in main.INDEX_HTML:
     main.INDEX_HTML = main.INDEX_HTML.replace("</body>", _MOBILE_UX_UI + "\n</body>")
