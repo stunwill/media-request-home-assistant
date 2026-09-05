@@ -62,14 +62,14 @@ def _download_context(tmdb_id: int, principal: main.Principal) -> dict[str, Any]
         return None
     return {
         "request_id": int(row["id"]),
-        "requested_by": str(row["requested_by_name"]),
-        "requested_at": str(row["created_at"]),
-        "updated_at": str(row["updated_at"]),
-        "status": str(row["status"]),
-        "progress": float(row["progress"] or 0),
-        "status_message": str(row["status_message"] or ""),
-        "selected_release_title": str(row["selected_release_title"] or ""),
-        "estimated_size_gb": float(row["estimated_size_gb"] or 0),
+        "requested_by": str(row["requested_by_name"] or "") or None,
+        "requested_at": str(row["created_at"] or "") or None,
+        "updated_at": str(row["updated_at"] or "") or None,
+        "status": str(row["status"] or "") or None,
+        "progress": float(row["progress"]) if row["progress"] is not None else None,
+        "status_message": str(row["status_message"] or "") or None,
+        "selected_release_title": str(row["selected_release_title"] or "") or None,
+        "estimated_size_gb": float(row["estimated_size_gb"]) if row["estimated_size_gb"] is not None else None,
         "library_status": "available" if str(row["status"]) == "available" else "not_available",
     }
 
@@ -141,7 +141,8 @@ _RICH_DETAILS_UI = r"""
 
   function richRatings(movie){const cards=(movie.ratings||[]).map(r=>`<a class="rating-card" href="${esc(r.url||'#')}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(r.source)} rating"><strong>${esc(r.source)}</strong>${esc(r.value||'View rating')}</a>`).join('');return cards?`<div class="section-title">Ratings & reviews</div><div class="ratings-grid">${cards}</div>`:'';}
   function richCast(movie){const cards=(movie.cast||[]).map(actor=>`<button class="cast-card" data-person-id="${actor.id||''}" data-person-name="${esc(actor.name||'')}" aria-label="View movies starring ${esc(actor.name||'actor')}">${actor.profile_url?`<img src="${esc(actor.profile_url)}" alt="${esc(actor.name||'Actor')}">`:''}<div class="cast-name">${esc(actor.name||'')}</div><div class="cast-role">${esc(actor.character||'')}</div></button>`).join('');return cards?`<div class="section-title">Cast</div><div class="cast-strip">${cards}</div>`:'';}
-  function libraryInfo(movie){const lib=movie.library;if(!lib)return '';return `<div class="section-title">Download & library</div><div class="library-card"><div><span>Status</span>${esc(lib.status||'')}</div><div><span>Requested by</span>${esc(lib.requested_by||'')}</div><div><span>Requested</span>${esc(new Date(lib.requested_at).toLocaleString())}</div><div><span>Progress</span>${Number(lib.progress||0).toFixed(0)}%</div><div><span>Release</span>${esc(lib.selected_release_title||'Not recorded')}</div><div><span>Size</span>${Number(lib.estimated_size_gb||0).toFixed(2)} GB</div></div>`;}
+  function safeDate(value){if(!value)return null;const date=new Date(value);return Number.isNaN(date.getTime())?null:date.toLocaleString();}
+  function libraryInfo(movie){const lib=movie.library;if(!lib||movie.context!=='downloads')return '';const fields=[];if(lib.status)fields.push(`<div><span>Status</span>${esc(lib.status)}</div>`);if(lib.requested_by)fields.push(`<div><span>Requested by</span>${esc(lib.requested_by)}</div>`);const requested=safeDate(lib.requested_at);if(requested)fields.push(`<div><span>Requested</span>${esc(requested)}</div>`);if(lib.progress!==null&&lib.progress!==undefined)fields.push(`<div><span>Progress</span>${Number(lib.progress).toFixed(0)}%</div>`);if(lib.selected_release_title)fields.push(`<div><span>Release</span>${esc(lib.selected_release_title)}</div>`);if(lib.estimated_size_gb!==null&&lib.estimated_size_gb!==undefined)fields.push(`<div><span>Size</span>${Number(lib.estimated_size_gb).toFixed(2)} GB</div>`);return fields.length?`<div class="section-title">Download & library</div><div class="library-card">${fields.join('')}</div>`:'';}
   function bindRichDetail(){document.querySelectorAll('[data-person-id]').forEach(button=>button.addEventListener('click',()=>showActorMovies(button.dataset.personId,button.dataset.personName)));}
   function restoreActorMovie(){if(!actorReturnMovie)return;state.movie=actorReturnMovie;state.movie.context=actorReturnContext;actorReturnMovie=null;renderDetail();document.getElementById('modal').classList.remove('hidden');document.getElementById('close-modal').focus();}
   async function showActorMovies(personId,name){actorReturnMovie=state.movie;actorReturnContext=state.movie?.context||'browse';showView('browse');if(!personId){state.query=name;document.getElementById('search').value=name;closeModal();await loadMovies();return;}try{const data=await api(`catalog/people/${personId}/movies`);closeModal();state.query='';state.collection='popular';state.page=Number(data.page||1);state.totalPages=Number(data.total_pages||1);document.getElementById('search').value='';document.getElementById('catalogue-title').textContent=`Movies with ${name}`;document.getElementById('catalogue-meta').textContent=`${Number(data.total_results||0).toLocaleString()} titles available · page ${state.page} of ${state.totalPages}.`;const container=document.getElementById('movies');container.innerHTML=(data.movies||[]).map(movieCard).join('')||'<div class="empty">No movies were found for this actor.</div>';bindMovieCards(container);document.getElementById('load-more-area').classList.toggle('hidden',state.page>=state.totalPages);const heading=document.querySelector('#browse-view .heading');if(heading&&!document.getElementById('actor-back')){heading.insertAdjacentHTML('beforeend','<button class="button" id="actor-back" type="button">Back to movie details</button>');document.getElementById('actor-back').addEventListener('click',restoreActorMovie);}}catch(error){toast(error.message);}}
