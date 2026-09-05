@@ -20,6 +20,126 @@ def _strip_token_if_rejected(item: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _movie_policy_public(release: dict[str, Any], rules: main.ReleaseRules) -> dict[str, Any]:
+    result = dict(release)
+    details = [
+        release_identity.classify_arr_rejection(reason, service="Radarr")
+        for reason in release.get("rejections") or []
+    ]
+    quality = str(release.get("quality") or "").casefold()
+    size_gb = float(release.get("size_gb") or 0)
+    seeders = release.get("seeders")
+    quality_mode = "1080p_only" if rules.require_1080p is True else rules.quality_mode
+
+    if quality_mode == "1080p_only" and "1080" not in quality:
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy", "MediaHub requires a 1080p release", code="movie_resolution"
+        ))
+    elif quality_mode == "720p_only" and "720" not in quality:
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy", "MediaHub requires a 720p release", code="movie_resolution"
+        ))
+    elif quality_mode == "720p_and_1080p" and not any(resolution in quality for resolution in ("720", "1080")):
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy", "MediaHub requires a 720p or 1080p release", code="movie_resolution"
+        ))
+
+    if not size_gb:
+        details.append(release_identity.rejection_detail(
+            "indexer_availability", "Release size is unavailable", code="size_unavailable"
+        ))
+    elif size_gb > rules.maximum_size_gb:
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy",
+            f"Exceeds {rules.maximum_size_gb:g} GB Movie limit",
+            code="movie_maximum_size",
+        ))
+
+    if seeders is None:
+        details.append(release_identity.rejection_detail(
+            "indexer_availability", "Seeder count is unavailable", code="seeders_unknown"
+        ))
+    elif int(seeders) < rules.minimum_seeders:
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy",
+            f"Release has fewer than {rules.minimum_seeders} seeders",
+            code="movie_minimum_seeders",
+        ))
+
+    if not release.get("download_allowed", True):
+        details.append(release_identity.rejection_detail(
+            "arr",
+            "Radarr does not allow this release to be downloaded",
+            code="radarr_download_not_allowed",
+            service="Radarr",
+        ))
+
+    release_identity.with_rejection_details(result, details)
+    result["eligible"] = bool(release.get("approved")) and not result["rejection_details"]
+    result.pop("info_hash", None)
+    result.pop("guid", None)
+    return result
+
+
+def _recent_fallback_public(release: dict[str, Any], rules: main.ReleaseRules) -> dict[str, Any]:
+    result = dict(release)
+    details: list[dict[str, Any]] = []
+    size_gb = float(release.get("size_gb") or 0)
+    seeders = release.get("seeders")
+
+    if not enhanced_main._is_low_quality_release(release):
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy",
+            "Not a supported recent-release fallback quality",
+            code="recent_fallback_quality",
+        ))
+
+    for reason in release.get("rejections") or []:
+        text = str(reason)
+        if enhanced_main._only_quality_rejections([text]):
+            continue
+        details.append(release_identity.classify_arr_rejection(text, service="Radarr"))
+
+    if not size_gb:
+        details.append(release_identity.rejection_detail(
+            "indexer_availability", "Release size is unavailable", code="size_unavailable"
+        ))
+    elif size_gb > rules.maximum_size_gb:
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy",
+            f"Exceeds {rules.maximum_size_gb:g} GB Movie limit",
+            code="movie_maximum_size",
+        ))
+    if seeders is None:
+        details.append(release_identity.rejection_detail(
+            "indexer_availability", "Seeder count is unavailable", code="seeders_unknown"
+        ))
+    elif int(seeders) < rules.minimum_seeders:
+        details.append(release_identity.rejection_detail(
+            "mediahub_policy",
+            f"Release has fewer than {rules.minimum_seeders} seeders",
+            code="movie_minimum_seeders",
+        ))
+    if not release.get("download_allowed", True):
+        details.append(release_identity.rejection_detail(
+            "arr",
+            "Radarr does not allow this release to be downloaded",
+            code="radarr_download_not_allowed",
+            service="Radarr",
+        ))
+
+    release_identity.with_rejection_details(result, details)
+    result["eligible"] = not result["rejection_details"]
+    result["recent_quality_fallback"] = True
+    result["quality_warning"] = (
+        "Temporary lower-quality release. MediaHub offers this only inside the configured "
+        "recent-release fallback window when no eligible HD release is available."
+    )
+    result.pop("info_hash", None)
+    result.pop("guid", None)
+    return result
+
+
 async def search_movie_releases(
     tmdb_id: int,
     rules: main.ReleaseRules,
@@ -36,7 +156,7 @@ async def search_movie_releases(
     evaluated: list[dict[str, Any]] = []
     for release in releases:
         identity = release_identity.validate_movie_release(movie, release)
-        public = main.release_with_policy(release, rules)
+        public = _movie_policy_public(release, rules)
         public["recent_quality_fallback"] = False
         public = release_identity.apply_identity(public, identity)
         if public["eligible"]:
@@ -49,7 +169,7 @@ async def search_movie_releases(
     fallback_public: list[dict[str, Any]] = []
     for release in releases:
         identity = release_identity.validate_movie_release(movie, release)
-        public = enhanced_main.recent_fallback_policy(release, rules)
+        public = _recent_fallback_public(release, rules)
         public = release_identity.apply_identity(public, identity)
         if public["eligible"]:
             public["release_token"] = main.cache_release(tmdb_id, user_id, release)
