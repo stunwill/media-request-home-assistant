@@ -177,14 +177,40 @@ def _preset_tv_policy(_options: dict[str, Any] | None = None) -> dict[str, float
     }
 
 
+def _legacy_tv_rejection_detail(reason: str, item: dict[str, Any]) -> dict[str, Any]:
+    lowered = reason.casefold()
+    raw_arr = {str(value) for value in item.get("rejections") or []}
+    if reason in raw_arr:
+        return release_identity.classify_arr_rejection(reason, service="Sonarr")
+    if "exceeds the" in lowered and "tv" in lowered and "limit" in lowered:
+        return release_identity.rejection_detail(
+            "mediahub_policy", reason, code="tv_maximum_size"
+        )
+    if "mediahub requires" in lowered or "resolution is not enabled" in lowered:
+        return release_identity.rejection_detail(
+            "mediahub_policy", reason, code="tv_resolution"
+        )
+    if "fewer than" in lowered and "seeders" in lowered:
+        return release_identity.rejection_detail(
+            "mediahub_policy", reason, code="tv_minimum_seeders"
+        )
+    if "size is unavailable" in lowered or "seeder count is unavailable" in lowered:
+        return release_identity.rejection_detail(
+            "indexer_availability", reason, code="tv_release_metadata_unavailable"
+        )
+    if "sonarr does not allow" in lowered:
+        return release_identity.rejection_detail(
+            "arr", reason, code="sonarr_download_not_allowed", service="Sonarr"
+        )
+    return release_identity.rejection_detail("other", reason, code="tv_legacy_rejection")
+
+
 def _preset_tv_release_public(item: dict[str, Any], *, limit_gb: float, scope: Literal["season", "episode"]) -> dict[str, Any]:
     result = _original_tv_release_public(item, limit_gb=limit_gb, scope=scope)
-    details = [dict(value) for value in result.get("rejection_details") or []]
-    if not details:
-        details = [
-            release_identity.classify_arr_rejection(value, service="Sonarr")
-            for value in item.get("rejections") or []
-        ]
+    details = [
+        _legacy_tv_rejection_detail(str(value), item)
+        for value in result.get("policy_rejections") or []
+    ]
     tv = load_presets()["tv"]
     quality = str(result.get("quality") or "").casefold()
     allowed = [str(value).casefold() for value in tv["allowed_resolutions"]]
