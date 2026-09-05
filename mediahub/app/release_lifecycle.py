@@ -303,6 +303,15 @@ async def watch_movie(
     return _watch_public(row) or {}
 
 
+def _structured_rejection_summary(releases: list[dict[str, Any]]) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for item in releases:
+        primary = item.get("primary_rejection") or {}
+        category = str(primary.get("category") or "other")
+        summary[category] = summary.get(category, 0) + 1
+    return summary
+
+
 async def release_search(
     tmdb_id: int,
     rules: main.ReleaseRules,
@@ -335,13 +344,10 @@ async def release_search(
         logger.info("indexer returned zero results tmdb_id=%s", tmdb_id)
     elif not eligible:
         state = "all_rejected"
-        reasons: dict[str, int] = {}
-        for item in releases:
-            for reason in item.get("policy_rejections") or []:
-                reasons[str(reason)] = reasons.get(str(reason), 0) + 1
-        result["rejection_summary"] = reasons
-        message = "Releases were found, but none matched your configured size, quality or seeder requirements."
-        logger.info("release results returned but rejected tmdb_id=%s reasons=%s", tmdb_id, json.dumps(reasons, sort_keys=True))
+        summary = _structured_rejection_summary(releases)
+        result["rejection_summary"] = summary
+        message = f"{len(releases)} releases found, but none are currently available to download."
+        logger.info("release results returned but rejected tmdb_id=%s summary=%s", tmdb_id, json.dumps(summary, sort_keys=True))
     else:
         state = "results"
         message = f"{len(eligible)} qualifying release{'s' if len(eligible) != 1 else ''} found."
@@ -485,6 +491,10 @@ _RELEASE_LIFECYCLE_UI = r"""
     }catch(error){toast(error.message);button.disabled=false;}
   }
 
+  function summaryLabel(category){return({identity:'Identity mismatch',library_upgrade:'Radarr / library state',arr:'Radarr',mediahub_policy:'MediaHub household preset',indexer_availability:'Release availability',other:'Other'})[category]||category.replaceAll('_',' ');}
+  function releaseSummary(data){const entries=Object.entries(data.rejection_summary||{});if(!entries.length)return '';return `<details class="release-summary-compact"><summary><strong>Why were releases excluded?</strong></summary>${entries.map(([category,count])=>`<div class="release-summary-row"><span>${esc(summaryLabel(category))}</span><strong>${count}</strong></div>`).join('')}</details>`;}
+  function releaseReason(release){const primary=release.primary_rejection;if(!primary)return '';const extra=(release.rejection_details||[]).filter(item=>item!==primary);return `<div class="release-primary-reason"><strong>${esc(release.rejection_label||'UNAVAILABLE')}</strong>${esc(primary.message||'Release unavailable')}${extra.length?`<details class="release-diagnostics"><summary>Details</summary>${extra.map(item=>`<div>${esc(item.message||'')}</div>`).join('')}</details>`:''}</div>`;}
+
   findReleases=async function(manualOverride=false){
     const area=document.getElementById('release-area');
     const selectedRules=rules();
@@ -495,8 +505,11 @@ _RELEASE_LIFECYCLE_UI = r"""
       if(data.search_state==='deferred_upcoming'){
         area.innerHTML=`<div class="empty">${esc(data.search_message)}</div>`;return;
       }
-      const rejectionDetails=data.search_state==='all_rejected'&&data.rejection_summary?`<div class="hint" style="margin:10px 0">${Object.entries(data.rejection_summary).map(([reason,count])=>`${count} × ${esc(reason)}`).join(' · ')}</div>`:'';
-      area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${rejectionDetails}</div><button class="button" id="rerun-search">Search again</button></div><div class="releases">${data.releases.map(release=>`<article class="release"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${release.size_gb.toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div>${release.policy_rejections.length?`<div class="release-reasons">${esc(release.policy_rejections.join(' · '))}</div>`:''}</div><button class="button ${release.eligible?'primary':''}" data-token="${esc(release.release_token)}" ${release.eligible?'':'disabled'}>${release.eligible?'Download':'Rejected'}</button></article>`).join('')||`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`}</div>`;
+      const available=(data.releases||[]).filter(release=>release.eligible);
+      const unavailable=(data.releases||[]).filter(release=>!release.eligible);
+      const availableRows=available.map(release=>`<article class="release" data-eligible="true"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${release.size_gb.toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div></div><button class="button primary" data-token="${esc(release.release_token||'')}">Download</button></article>`).join('');
+      const unavailableRows=unavailable.map(release=>`<article class="release" data-eligible="false"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${release.size_gb.toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div>${releaseReason(release)}</div><button class="button" disabled>${esc(release.rejection_label||'Unavailable')}</button></article>`).join('');
+      area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${releaseSummary(data)}</div><button class="button" id="rerun-search">Search again</button></div><div class="releases">${availableRows||(!unavailableRows?`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`:'')}</div>${unavailableRows?`<details class="unavailable-releases"><summary>Unavailable releases (${unavailable.length})</summary><div class="releases">${unavailableRows}</div></details>`:''}`;
       document.getElementById('rerun-search').addEventListener('click',()=>findReleases(manualOverride));
       area.querySelectorAll('[data-token]').forEach(button=>button.addEventListener('click',()=>submitRequest(button.dataset.token,button)));
     }catch(error){area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty">${esc(error.message)}</div>`;}
