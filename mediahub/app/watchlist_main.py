@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from . import main, mobile_ux_ui, preset_main, release_lifecycle, runtime
 
 app = mobile_ux_ui.app
-app.version = "0.15.0-dev"
+app.version = "0.15.1-dev"
 logger = logging.getLogger("mediahub.watchlist")
 
 
