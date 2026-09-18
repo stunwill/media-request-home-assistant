@@ -87,6 +87,25 @@ Status: In Progress
 - [x] Preserve opaque token, duplicate protection, Watch for release and recent-release fallback boundaries.
 - [x] Complete the full GitHub Actions suite with all required checks green.
 
+## v0.15.0 - Upcoming Movie Watchlist & Release Monitoring
+
+Status: In Progress
+
+### Features
+- [x] Add a persistent Watchlist for upcoming and currently unavailable movies.
+- [x] Reuse the existing movie-watch lifecycle and identity-aware release search rather than creating a parallel polling system.
+- [x] Derive Upcoming, Awaiting release, No eligible release, Available, Downloading and Downloaded states from existing lifecycle data.
+- [x] Use current administrator Movie Download Presets for automatic and manual availability checks.
+- [x] Add mobile-first Watchlist navigation, filters, release dates, last-check context and explicit Check now actions.
+- [x] Preserve explicit user release selection, with no automatic download when a watched movie becomes available.
+- [x] Add upgrade-safe movie_watches schema fields for availability and future notification deduplication.
+
+### Regression protection
+- [x] Preserve release identity validation for short or ambiguous titles.
+- [x] Preserve server-authoritative household download policy and requester override protection.
+- [x] Preserve existing request, download, Radarr, Prowlarr and lifecycle behaviour.
+- [x] Add focused v0.15 Watchlist regression coverage and deployed-entrypoint/version checks.
+
 ## Future
 
 ### Live Downloads 2.0
