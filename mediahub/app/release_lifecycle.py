@@ -501,7 +501,7 @@ _RELEASE_LIFECYCLE_UI = r"""
     area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty">Searching available releases...</div>`;
     try{
       const suffix=manualOverride?'?manual_override=true':'';
-      const data=await api(`movies/${state.movie.tmdb_id}/releases${suffix}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selectedRules)});
+      const request=api(`movies/${state.movie.tmdb_id}/releases${suffix}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selectedRules)});\n      const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Release search is taking too long. Check your Prowlarr/Radarr connection and try again.')),45000));\n      const data=await Promise.race([request,timeout]);\n      if(!document.body.contains(area))return;
       if(data.search_state==='deferred_upcoming'){
         area.innerHTML=`<div class="empty">${esc(data.search_message)}</div>`;return;
       }
@@ -512,7 +512,7 @@ _RELEASE_LIFECYCLE_UI = r"""
       area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${releaseSummary(data)}</div><button class="button" id="rerun-search">Search again</button></div><div class="releases">${availableRows||(!unavailableRows?`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`:'')}</div>${unavailableRows?`<details class="unavailable-releases"><summary>Unavailable releases (${unavailable.length})</summary><div class="releases">${unavailableRows}</div></details>`:''}`;
       document.getElementById('rerun-search').addEventListener('click',()=>findReleases(manualOverride));
       area.querySelectorAll('[data-token]').forEach(button=>button.addEventListener('click',()=>submitRequest(button.dataset.token,button)));
-    }catch(error){area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty">${esc(error.message)}</div>`;}
+    }catch(error){if(!document.body.contains(area))return;const message=error?.message||'Release search failed. Please try again.';area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty"><strong>Release search could not be completed.</strong><br>${esc(message)}<div style="margin-top:12px"><button class="button" id="retry-release-search">Try again</button></div></div>`;document.getElementById('retry-release-search')?.addEventListener('click',()=>findReleases(manualOverride));}
   };
 </script>
 """
