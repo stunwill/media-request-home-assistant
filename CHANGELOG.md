@@ -4,6 +4,26 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0-dev] - 2026-09-17
+
+### Added
+
+- Persistent Upcoming Movie Watchlist built on the existing movie-watch lifecycle.
+- Watchlist availability states for upcoming, awaiting release, no eligible release, available, downloading and downloaded movies.
+- Mobile-first Watchlist navigation, filters, release-date and last-check context, plus explicit Check now actions.
+- Upgrade-safe watch availability fields and focused v0.15 regression coverage.
+
+### Changed
+
+- Development version advanced to `0.15.0-dev`.
+- Availability checks reuse the identity-aware release pipeline and current administrator Movie Download Presets.
+- Watched movies remain user-controlled: becoming available does not automatically start a download.
+
+### Protected
+
+- Release identity, server-authoritative household presets, duplicate protection, existing request/download lifecycle and service integrations remain protected by regression coverage.
+
+
 ### Fixed
 
 - Restored the administrator **Download Presets** UI to the actual deployed `app.mobile_ux_ui:app` import chain after the mobile entrypoint stopped importing the v0.12 preset UI layer.

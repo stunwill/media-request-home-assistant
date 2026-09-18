@@ -1,5 +1,21 @@
 # MediaHub Home Assistant Changelog
 
+## 0.15.0-dev
+
+- Added a first-class **Watchlist** page for upcoming and currently unavailable movies.
+- Upgraded the existing Watch for release foundation into a persistent user-owned workflow with Add to Watchlist and Remove from Watchlist actions on Movie details.
+- Added All, Upcoming, Waiting and Available Watchlist filters with mobile-first poster cards and release-date context.
+- Added manual **Check now** release refresh while preserving automatic lifecycle-aware monitoring.
+- Automatic monitoring reuses the existing identity-aware Radarr/Prowlarr release pipeline and current administrator Movie Download Presets. It never bypasses quality, size, seeder, Radarr or identity rules.
+- Watchlist policy is server-authoritative. Requesters cannot store looser per-movie release rules, and later checks use the current household presets.
+- Added availability states for upcoming, waiting, no eligible release, available, downloading and downloaded movies.
+- Added persistent poster metadata, first-available timestamp and availability state through upgrade-safe SQLite migrations.
+- Provider/network failures preserve the last known Watchlist state instead of falsely changing a movie to unavailable.
+- Available movies still require the user to open the existing release-selection workflow and explicitly choose/request a release. Watchlist monitoring never auto-downloads.
+- Preserved release identity validation for ambiguous titles such as **Below**, including title/year protections already enforced by MediaHub.
+- Acceptance examples include **The Social Reckoning (2026)**, **Remain** and **Below**.
+- Updated the deployed Home Assistant ingress/external entrypoint to `app.watchlist_main:app`.
+
 ## 0.14.2-dev
 
 - Restored the administrator **Download Presets** UI to the deployed Home Assistant ingress entrypoint.
