@@ -1,8 +1,12 @@
-## v0.16.0-dev
+## v0.16.0
 
-Status: Corrective release in review
+Status: Feature release in review
 
-Publishes the v0.15.1 Home Assistant update-detection/version correction for the Choose a release freeze fix.
+### Features
+- [ ] Populate the mobile Genre filter from the live TMDb genre list after asynchronous loading completes.
+- [ ] Allow multiple movie genres to be selected and applied together on mobile.
+- [ ] Preserve desktop single-genre filtering compatibility.
+- [ ] Add regression coverage for genre synchronisation and multi-select requests.
 
 # MediaHub Roadmap
 
