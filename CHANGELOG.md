@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.2-dev] - 2026-09-25
+
+### Fixed
+
+- **Apply filters** now dismisses the mobile filter sheet immediately before refreshing Browse results.
+- Filter-sheet dismissal explicitly removes its visible display state and releases the body modal lock.
+
+
 ## [0.16.1-dev] - 2026-09-24
 
 ### Fixed
