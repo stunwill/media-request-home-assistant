@@ -10,6 +10,14 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.2
+
+Status: Corrective release in review
+
+- [ ] Dismiss the mobile filter modal immediately when filters are applied.
+- [ ] Keep catalogue refresh independent from modal dismissal.
+
+
 ## v0.16.1
 
 Status: Corrective release in review
