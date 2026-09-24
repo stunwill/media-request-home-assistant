@@ -4,6 +4,13 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.5-dev] - 2026-09-25
+
+### Fixed
+
+- Removed the mobile Filters modal's invalid dependency on `window.state`. The base application declares `state` with top-level `const`, so it is not a `window` property; attempting to assign `window.state.genreIds` caused Apply to throw before committing or dismissing the modal.
+
+
 ## [0.16.4-dev] - 2026-09-25
 
 ### Fixed
