@@ -1,5 +1,9 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.1-dev
+
+- Fixed mobile **Apply filters** so selected genres, release years and ratings refresh the active infinite-scroll Browse catalogue.
+
 ## 0.16.0-dev
 
 - Added a mobile multi-select Genre picker and multiple-genre catalogue filtering.
