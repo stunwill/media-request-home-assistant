@@ -12,14 +12,6 @@ All notable MediaHub changes are documented in this file.
 - Catalogue API support for multiple simultaneous genre IDs.
 
 
-## [0.16.0-dev] - 2026-09-24
-
-### Fixed
-
-- Corrected the Movie **Choose a release** browser-freeze regression by shipping the valid JavaScript correction merged in PR #40.
-- Advanced the Home Assistant add-on and deployed application version so existing `0.15.0-dev` installations can detect and install the corrective build.
-
-
 ## [0.15.0-dev] - 2026-09-17
 
 ### Added
