@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.1-dev] - 2026-09-24
+
+### Fixed
+
+- Mobile **Apply filters** now refreshes the active infinite-scroll catalogue instead of calling the intentionally disabled legacy movie loader.
+- Genre, release-year and rating filters now flow through the active catalogue controller together.
+
+
 ## [0.16.0-dev] - 2026-09-24
 
 ### Added
