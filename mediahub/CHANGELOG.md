@@ -1,9 +1,9 @@
 # MediaHub Home Assistant Changelog
 
-## 0.15.1-dev
+## 0.15.2-dev
 
 - Publishes the PR #40 **Choose a release** browser-freeze correction to Home Assistant installations already on `0.15.0-dev`.
-- Advances the Home Assistant add-on and deployed application version to `0.15.1-dev` so Home Assistant can detect and install the corrective update.
+- Advances the Home Assistant add-on and deployed application version to `0.15.2-dev` so Home Assistant can detect and install the corrective update.
 
 ## 0.15.0-dev
 
