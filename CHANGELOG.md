@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.3-dev] - 2026-09-25
+
+### Fixed
+
+- Applying mobile filters now supersedes any in-flight infinite-scroll catalogue request instead of silently dropping the filtered reload.
+- Stale catalogue responses are ignored so unfiltered results cannot overwrite newly filtered results.
+
+
 ## [0.16.2-dev] - 2026-09-25
 
 ### Fixed

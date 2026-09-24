@@ -1,5 +1,9 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.3-dev
+
+- Fixed a catalogue request race that could close Filters successfully but leave the unfiltered movie grid unchanged.
+
 ## 0.16.2-dev
 
 - Fixed the mobile Filters sheet remaining visible after **Apply filters**.
