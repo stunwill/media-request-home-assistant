@@ -10,6 +10,13 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.4
+
+Status: Corrective release in review
+
+- [ ] Preserve mobile multi-genre state through all catalogue reset paths.
+
+
 ## v0.16.3
 
 Status: Corrective release in review
