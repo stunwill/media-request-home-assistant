@@ -4,7 +4,15 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
-## [0.15.2-dev] - 2026-09-24
+## [0.16.0-dev] - 2026-09-24
+
+### Added
+
+- Mobile multi-select Genre filtering with genre choices synchronised after TMDb genre loading.
+- Catalogue API support for multiple simultaneous genre IDs.
+
+
+## [0.16.0-dev] - 2026-09-24
 
 ### Fixed
 
