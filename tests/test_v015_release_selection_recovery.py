@@ -6,6 +6,8 @@ from mediahub.app import main
 def test_movie_release_search_has_terminal_timeout_and_retry_state() -> None:
     html = main.INDEX_HTML
     assert "Promise.race([request,timeout])" in html
+    assert r")}\\n      const timeout=" not in html
+    assert r"));\\n      const data=" not in html
     assert "45000" in html
     assert "Release search could not be completed." in html
     assert "retry-release-search" in html
