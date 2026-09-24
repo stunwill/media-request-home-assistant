@@ -1,3 +1,9 @@
+## v0.15.1-dev
+
+Status: Corrective release in review
+
+Publishes the v0.15.1 Home Assistant update-detection/version correction for the Choose a release freeze fix.
+
 # MediaHub Roadmap
 
 ## v0.9.0 - Plex Library Intelligence
