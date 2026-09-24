@@ -154,7 +154,7 @@ class TmdbClient:
         query: str = "",
         page: int = 1,
         collection: str = "popular",
-        genre_id: int | None = None,
+        genre_id: int | list[int] | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
         rating_from: float | None = None,
@@ -202,7 +202,8 @@ class TmdbClient:
             if collection == "top_rated":
                 params["vote_count.gte"] = 250
             if genre_id:
-                params["with_genres"] = genre_id
+                genre_ids = genre_id if isinstance(genre_id, list) else [genre_id]
+                params["with_genres"] = ",".join(str(value) for value in genre_ids)
             if rating_from:
                 params["vote_average.gte"] = rating_from
             if rating_to:
@@ -249,7 +250,7 @@ class TmdbClient:
             movies = [
                 movie
                 for movie in movies
-                if (not genre_id or genre_id in movie["genre_ids"])
+                if (not genre_id or all(value in movie["genre_ids"] for value in (genre_id if isinstance(genre_id, list) else [genre_id])))
                 and (
                     not year_from
                     or (str(movie["year"] or "").isdigit() and int(movie["year"]) >= year_from)
