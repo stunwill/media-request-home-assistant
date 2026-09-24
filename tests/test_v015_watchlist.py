@@ -42,7 +42,7 @@ def test_deployed_entrypoint_is_watchlist():
     run = Path("mediahub/run.sh").read_text()
     assert run.count("app.watchlist_main:app") == 2
     config = Path("mediahub/config.yaml").read_text()
-    assert 'version: "0.16.2-dev"' in config
+    assert 'version: "0.16.3-dev"' in config
 
 
 def test_ambiguous_titles_remain_identity_validated():
