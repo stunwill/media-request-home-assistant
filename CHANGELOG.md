@@ -4,6 +4,13 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.4-dev] - 2026-09-25
+
+### Fixed
+
+- Multi-select movie genres now remain authoritative when the infinite catalogue resets, instead of being overwritten by the hidden legacy single-genre control.
+
+
 ## [0.16.3-dev] - 2026-09-25
 
 ### Fixed

@@ -1,5 +1,9 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.4-dev
+
+- Fixed applied multi-select genres being lost during the catalogue reset path.
+
 ## 0.16.3-dev
 
 - Fixed a catalogue request race that could close Filters successfully but leave the unfiltered movie grid unchanged.
