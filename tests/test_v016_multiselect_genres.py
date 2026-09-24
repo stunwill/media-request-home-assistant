@@ -12,7 +12,7 @@ def test_mobile_genre_picker_is_multiselect_and_resynchronises_options():
     assert 'type="checkbox"' in html
     assert "function syncGenres()" in html
     assert "source.options" in html
-    assert "genreIds=genres" in html
+    assert "mobileGenreIds=genres" in html
 
 
 def test_catalogue_requests_emit_each_selected_genre():

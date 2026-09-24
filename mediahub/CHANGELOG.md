@@ -1,5 +1,9 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.5-dev
+
+- Fixed the mobile Filters Apply handler crashing on an undefined `window.state` object.
+
 ## 0.16.4-dev
 
 - Fixed applied multi-select genres being lost during the catalogue reset path.

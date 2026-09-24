@@ -10,6 +10,14 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.5
+
+Status: Corrective release in review
+
+- [ ] Remove the invalid cross-script `window.state` dependency from mobile Filters.
+- [ ] Verify Apply reaches catalogue refresh and modal dismissal without a JavaScript exception.
+
+
 ## v0.16.4
 
 Status: Corrective release in review
