@@ -10,6 +10,13 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.1
+
+Status: Corrective release in review
+
+- [ ] Route mobile filter Apply through the active infinite-scroll catalogue controller.
+- [ ] Preserve multi-genre, year and rating filters in the refreshed catalogue.
+
 ## v0.9.0 - Plex Library Intelligence
 
 Status: Delivered
