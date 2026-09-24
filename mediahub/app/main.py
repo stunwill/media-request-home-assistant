@@ -689,7 +689,7 @@ async def movie_catalogue(
     query: str = Query(default="", max_length=200),
     page: int = Query(default=1, ge=1, le=500),
     collection: Literal["popular", "top_rated", "now_playing", "upcoming"] = "popular",
-    genre_id: int | None = Query(default=None, ge=1),
+    genre_id: list[int] | None = Query(default=None),
     year_from: int | None = Query(default=None, ge=1874, le=2100),
     year_to: int | None = Query(default=None, ge=1874, le=2100),
     rating_from: float | None = Query(default=None, ge=1, le=10),
