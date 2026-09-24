@@ -10,6 +10,14 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.3
+
+Status: Corrective release in review
+
+- [ ] Ensure Apply filters always starts a fresh filtered catalogue request.
+- [ ] Ignore stale pre-filter infinite-scroll responses.
+
+
 ## v0.16.2
 
 Status: Corrective release in review
