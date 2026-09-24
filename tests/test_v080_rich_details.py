@@ -181,3 +181,9 @@ def test_rich_movie_details_keeps_release_lifecycle() -> None:
         )
     assert result["lifecycle"]["state"] == "digital_available"
     assert result["context"] == "browse"
+
+
+def test_rich_detail_does_not_depend_on_external_lifecycle_helper() -> None:
+    html = main.INDEX_HTML
+    assert "function richLifecyclePrimary(movie)" in html
+    assert "const primary=richLifecyclePrimary(movie)" in html
