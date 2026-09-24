@@ -1,5 +1,9 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.2-dev
+
+- Fixed the mobile Filters sheet remaining visible after **Apply filters**.
+
 ## 0.16.1-dev
 
 - Fixed mobile **Apply filters** so selected genres, release years and ratings refresh the active infinite-scroll Browse catalogue.
