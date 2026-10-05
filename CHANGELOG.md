@@ -4,6 +4,13 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.6-dev] - 2026-10-05
+
+### Fixed
+
+- Preserved the active Browse text search when switching between Movies and TV Shows, so the same query is immediately applied to the newly selected media type.
+
+
 ## [0.16.5-dev] - 2026-09-25
 
 ### Fixed

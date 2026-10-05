@@ -1,5 +1,9 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.6-dev
+
+- Preserved the active Browse search term when switching between Movies and TV Shows.
+
 ## 0.16.5-dev
 
 - Fixed the mobile Filters Apply handler crashing on an undefined `window.state` object.
