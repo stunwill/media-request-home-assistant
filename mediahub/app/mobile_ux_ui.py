@@ -3,7 +3,7 @@ from __future__ import annotations
 from . import main, mobile_live_ui, preset_ui
 
 app = mobile_live_ui.app
-app.version = "0.16.5-dev"
+app.version = "0.16.6-dev"
 
 _MOBILE_UX_UI = r"""
 <style>
