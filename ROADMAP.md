@@ -10,6 +10,15 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.6
+
+Status: Corrective release in review
+
+- [x] Preserve the active text-search query when switching between Movies and TV Shows.
+- [x] Keep media-specific collection, filter and scroll state independent.
+- [x] Add regression coverage for persistent cross-media search.
+
+
 ## v0.16.5
 
 Status: Corrective release in review
