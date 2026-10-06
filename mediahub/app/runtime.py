@@ -313,7 +313,7 @@ def _normalise_prowlarr_release(
     }
 
 
-def _prowlarr_policy(release: dict[str, Any], rules: main.ReleaseRules) -> dict[str, Any]:
+def _prowlarr_policy(\n    release: dict[str, Any],\n    rules: main.ReleaseRules,\n    *,\n    allow_low_quality: bool = True,\n) -> dict[str, Any]:
     result = dict(release)
     rejections: list[str] = []
     size_gb = float(release.get("size_gb") or 0)
@@ -326,13 +326,17 @@ def _prowlarr_policy(release: dict[str, Any], rules: main.ReleaseRules) -> dict[
     if not int(release.get("indexer_id") or 0):
         rejections.append("This Prowlarr indexer is not synced to Radarr")
 
-    if low_quality:
+    if low_quality and allow_low_quality:
         result["quality_warning"] = (
             "Temporary low-quality release found directly through Prowlarr. MediaHub normally "
             "prefers 720p/1080p and only exposes CAM/TS/telecine/screener results for current-year "
             "or recently released movies when Radarr returns no results."
         )
     else:
+        if low_quality:
+            rejections.append(
+                "Low-quality fallback releases are only available for current-year or recently released movies"
+            )
         quality_mode = "1080p_only" if rules.require_1080p is True else rules.quality_mode
         if quality_mode == "1080p_only" and "1080" not in quality:
             rejections.append("MediaHub requires a 1080p release")
@@ -385,7 +389,7 @@ async def search_movie_releases(
             user_id,
             movie=movie,
         )
-        if releases or not recent_or_current_year_movie(movie):
+        if releases:
             return radarr_movie, releases, fallback_active
     else:
         _, radarr, _ = main.configured_clients(main.load_options())
@@ -393,8 +397,9 @@ async def search_movie_releases(
             radarr_movie = await radarr.ensure_movie(tmdb_id)
         except media_services.MediaServiceError as error:
             raise main.service_http_error(error) from error
-        if not recent_or_current_year_movie(movie):
-            return radarr_movie, [], False
+        # A previously selected direct-Prowlarr release may belong to an older movie.
+        # Keep the exact selection available, while the normal policy still prevents
+        # low-quality recent-release fallback rules from leaking into older titles.
 
     _, radarr, _ = main.configured_clients(main.load_options())
     raw_results = await _prowlarr_search(movie)
@@ -413,7 +418,11 @@ async def search_movie_releases(
         ):
             continue
 
-        public = _prowlarr_policy(release, rules)
+        public = _prowlarr_policy(
+            release,
+            rules,
+            allow_low_quality=recent_or_current_year_movie(movie),
+        )
         public["release_token"] = main.cache_release(tmdb_id, user_id, release)
         public_results.append(public)
 
