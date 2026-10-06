@@ -313,7 +313,12 @@ def _normalise_prowlarr_release(
     }
 
 
-def _prowlarr_policy(\n    release: dict[str, Any],\n    rules: main.ReleaseRules,\n    *,\n    allow_low_quality: bool = True,\n) -> dict[str, Any]:
+def _prowlarr_policy(
+    release: dict[str, Any],
+    rules: main.ReleaseRules,
+    *,
+    allow_low_quality: bool = True,
+) -> dict[str, Any]:
     result = dict(release)
     rejections: list[str] = []
     size_gb = float(release.get("size_gb") or 0)
