@@ -7,7 +7,7 @@ from . import enhanced_main, main, preset_main, release_identity, tv_release_sel
 app = preset_main.app
 app.version = "0.13.0-dev"
 
-_original_search_movie_releases = enhanced_main.search_movie_releases
+_original_search_movie_releases = preset_main._original_search_movie_releases
 _original_request_movie = enhanced_main.request_movie
 _original_season_releases = tv_release_selection.season_releases
 _original_episode_releases = tv_release_selection.episode_releases
@@ -147,34 +147,73 @@ async def search_movie_releases(
     *,
     movie: dict[str, Any] | None = None,
 ):
-    tmdb, radarr, _ = main.configured_clients(main.load_options())
+    """Apply identity validation without bypassing the established discovery pipeline."""
     if movie is None:
+        tmdb, _, _ = main.configured_clients(main.load_options())
         movie = await tmdb.details(tmdb_id)
-    radarr_movie = await radarr.ensure_movie(tmdb_id)
-    releases = await radarr.releases(int(radarr_movie["id"]))
+
+    radarr_movie, releases, fallback_active = await _original_search_movie_releases(
+        tmdb_id,
+        rules,
+        user_id,
+        movie=movie,
+    )
 
     evaluated: list[dict[str, Any]] = []
     for release in releases:
+        public = dict(release)
+        if not public.get("rejection_details"):
+            details: list[dict[str, Any]] = []
+            raw_arr = {str(value) for value in release.get("rejections") or []}
+            for reason_value in release.get("policy_rejections") or []:
+                reason = str(reason_value)
+                lowered = reason.casefold()
+                if reason in raw_arr:
+                    details.append(
+                        release_identity.classify_arr_rejection(reason, service="Radarr")
+                    )
+                elif (
+                    "mediahub requires" in lowered
+                    or "exceeds" in lowered
+                    or "fewer than" in lowered
+                    or "low-quality fallback" in lowered
+                ):
+                    details.append(
+                        release_identity.rejection_detail(
+                            "mediahub_policy",
+                            reason,
+                            code="movie_download_preset",
+                        )
+                    )
+                elif (
+                    "not synced to radarr" in lowered
+                    or "did not provide a downloadable" in lowered
+                    or "unavailable" in lowered
+                ):
+                    details.append(
+                        release_identity.rejection_detail(
+                            "indexer_availability",
+                            reason,
+                            code="release_unavailable",
+                        )
+                    )
+                else:
+                    details.append(
+                        release_identity.rejection_detail(
+                            "other",
+                            reason,
+                            code="movie_release_rejection",
+                        )
+                    )
+            release_identity.with_rejection_details(public, details)
+
         identity = release_identity.validate_movie_release(movie, release)
-        public = _movie_policy_public(release, rules)
-        public["recent_quality_fallback"] = False
         public = release_identity.apply_identity(public, identity)
-        if public["eligible"]:
-            public["release_token"] = main.cache_release(tmdb_id, user_id, release)
+        if not public["eligible"]:
+            public.pop("release_token", None)
         evaluated.append(public)
 
-    if any(item["eligible"] for item in evaluated) or not enhanced_main.is_recent_movie(movie):
-        return radarr_movie, evaluated, False
-
-    fallback_public: list[dict[str, Any]] = []
-    for release in releases:
-        identity = release_identity.validate_movie_release(movie, release)
-        public = _recent_fallback_public(release, rules)
-        public = release_identity.apply_identity(public, identity)
-        if public["eligible"]:
-            public["release_token"] = main.cache_release(tmdb_id, user_id, release)
-        fallback_public.append(public)
-    return radarr_movie, fallback_public, any(item["eligible"] for item in fallback_public)
+    return radarr_movie, evaluated, fallback_active
 
 
 async def season_releases(tmdb_id: int, season_number: int, principal: main.CurrentUser) -> dict[str, Any]:

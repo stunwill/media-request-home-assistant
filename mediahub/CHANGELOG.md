@@ -1,5 +1,12 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.7-dev
+
+- Fixed Movie release discovery so Radarr zero-result searches fall back to Prowlarr for older titles as well as recent releases.
+- Added media-safe documentary discovery, allowing standalone documentary movies outside tracker Movie categories while rejecting TV episode/season matches.
+- Preserved the recent-movie-only restriction for low-quality CAM/TS fallback.
+- Kept release identity validation layered on top of the existing Radarr/Prowlarr discovery pipeline.
+
 ## 0.16.6-dev
 
 - Preserved the active Browse search term when switching between Movies and TV Shows.
