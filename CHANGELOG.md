@@ -2,7 +2,15 @@
 
 All notable MediaHub changes are documented in this file.
 
-## [Unreleased]\n\n## [0.16.7-dev] - 2026-10-07\n\n### Fixed\n\n- Movie release selection now falls back to direct Prowlarr discovery whenever Radarr returns no releases, including older catalogue titles.\n- Direct Prowlarr discovery keeps Movie searches media-safe by validating title/year identity and rejecting TV episode or season matches before selection.\n- Documentary movies can now be discovered when a tracker files them outside its standard Movie categories, while TV-only release results remain ineligible for Movie requests.\n- Low-quality CAM/TS-style fallback remains restricted to current-year or recently released movies.\n- The final release-identity layer now preserves the established Radarr/Prowlarr discovery pipeline instead of replacing it with a Radarr-only search.\n
+## [Unreleased]
+
+## [0.16.8-dev] - 2026-10-07
+
+### Fixed
+
+- Prevented direct Prowlarr fallback searches from leaving Movie release selection waiting on slow serial indexer requests.
+- Movie-category and identity-filtered broad Prowlarr searches now run concurrently with bounded timeouts.
+- Preserved Movie/TV identity validation while allowing standalone documentaries to be discovered through the broad fallback.\n\n## [0.16.7-dev] - 2026-10-07\n\n### Fixed\n\n- Movie release selection now falls back to direct Prowlarr discovery whenever Radarr returns no releases, including older catalogue titles.\n- Direct Prowlarr discovery keeps Movie searches media-safe by validating title/year identity and rejecting TV episode or season matches before selection.\n- Documentary movies can now be discovered when a tracker files them outside its standard Movie categories, while TV-only release results remain ineligible for Movie requests.\n- Low-quality CAM/TS-style fallback remains restricted to current-year or recently released movies.\n- The final release-identity layer now preserves the established Radarr/Prowlarr discovery pipeline instead of replacing it with a Radarr-only search.\n
 
 ## [0.16.6-dev] - 2026-10-05
 
