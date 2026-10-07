@@ -10,6 +10,16 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.12
+
+Status: Corrective release in review
+
+- [x] Trace Choose a Release through the deployed FastAPI route.
+- [x] Rebind the Movie releases route after installing the runtime Prowlarr discovery override.
+- [x] Preserve direct Prowlarr fallback and its hard deadline.
+- [x] Add route-binding regression coverage.
+- [x] Include the Home Assistant-visible version bump in the same PR.
+
 ## v0.16.11
 
 Status: Corrective release in review

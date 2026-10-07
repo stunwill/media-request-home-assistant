@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.12-dev] - 2026-10-07
+
+### Fixed
+
+- Rebound the deployed Movie release-search route after runtime discovery overrides are installed.
+- Choose a Release now executes the intended direct Prowlarr fallback and hard timeout path when Radarr has no releases.
+- Added regression coverage for the actual FastAPI route binding.
+
 ## [0.16.11-dev] - 2026-10-07
 
 ### Fixed
