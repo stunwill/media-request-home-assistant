@@ -504,7 +504,7 @@ _RELEASE_LIFECYCLE_UI = r"""
   let releaseSearchGeneration=0;
   let movieReleaseSearch=null;
   function releaseSearchCurrent(search){return movieReleaseSearch===search&&search.generation===releaseSearchGeneration&&state.movie===search.movie&&state.movie?.tmdb_id===search.tmdbId&&document.getElementById('release-area')===search.area&&!document.getElementById('modal').classList.contains('hidden');}
-  function focusReleaseArea(area){const dialog=area?.closest('.dialog');if(!dialog)return;requestAnimationFrame(()=>{if(document.getElementById('release-area')!==area)return;const top=Math.max(0,area.offsetTop-16);dialog.scrollTo({top,behavior:'auto'});});}
+  function focusReleaseArea(area){const dialog=area?.closest('.dialog');if(!dialog||document.getElementById('release-area')!==area)return;const top=Math.max(0,area.offsetTop-16);dialog.scrollTo({top,behavior:'auto'});}
   cancelReleaseSearch=function(){
     const search=movieReleaseSearch;
     if(!search)return;
