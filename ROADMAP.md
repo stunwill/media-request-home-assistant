@@ -10,6 +10,15 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.9
+
+Status: Corrective release in review
+
+- [x] Add one hard deadline around the complete direct release-discovery operation.
+- [x] Add a client-side escape hatch for Choose a release.
+- [x] Guarantee release search resolves to results, no results, or a visible error state.
+- [x] Add regression coverage for server and browser deadlines.
+
 ## v0.16.8
 
 Status: Corrective release in review
