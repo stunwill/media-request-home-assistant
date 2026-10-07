@@ -309,7 +309,7 @@ def test_opaque_tokens_are_removed_from_rejected_tv_results() -> None:
 
 
 def test_movie_search_only_caches_tokens_inside_eligible_branches() -> None:
-    source_names = release_identity_main.search_movie_releases.__code__.co_names
+    source_names = release_identity_main._original_search_movie_releases.__code__.co_names
     assert "cache_release" in source_names
     html = main.INDEX_HTML
     assert "data-token=\"${esc(release.release_token||'')}\"" in html
