@@ -1,5 +1,11 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.14-dev
+
+- Fixed Movie detail reopening at a stale internal scroll position on mobile.
+- Hide the bottom MediaHub navigation while a full-screen detail modal is open so it cannot cover Ratings & Reviews or release controls.
+- Reserve additional bottom safe space inside mobile detail content.
+
 ## 0.16.13-dev
 
 - Fixed the mobile UX cleanup observer deleting the live Movie release-search status/results container.
