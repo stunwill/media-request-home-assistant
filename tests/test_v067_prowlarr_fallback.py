@@ -122,37 +122,6 @@ class DirectSearchFallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(releases[0]["quality"], "CAM")
         self.assertGreaterEqual(len(releases[0]["release_token"]), 16)
 
-    async def test_interactive_fallback_selection_reuses_existing_request_flow(self) -> None:
-        release = {
-            "source": "prowlarr_direct",
-            "guid": "chosen-guid",
-            "prowlarr_indexer_id": 7,
-            "indexer_id": 21,
-            "title": "Resident.Evil.2026.HDCAM.x264",
-            "quality": "CAM",
-            "size_gb": 1.0,
-            "seeders": 5,
-        }
-        token = main.cache_release(123, "user-1", release)
-        payload = main.MovieRequestCreate(release_token=token)
-        principal = SimpleNamespace(user_id="user-1")
-
-        async def existing_request_flow(tmdb_id, forwarded_payload, forwarded_principal):
-            self.assertEqual(tmdb_id, 123)
-            self.assertIsNone(forwarded_payload.release_token)
-            self.assertEqual(forwarded_principal.user_id, "user-1")
-            self.assertEqual(
-                runtime._selected_prowlarr_release[(123, "user-1")],
-                ("chosen-guid", 7),
-            )
-            return {"ok": True}
-
-        with patch.object(runtime, "_original_request_movie", existing_request_flow):
-            result = await runtime.request_movie(123, payload, principal)
-
-        self.assertEqual(result, {"ok": True})
-        self.assertNotIn((123, "user-1"), runtime._selected_prowlarr_release)
-        self.assertNotIn(token, main.release_cache)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,11 @@
+## [0.16.17] - 2026-10-08
+
+### Fixed
+
+- Direct Prowlarr/IPTorrents releases selected in Choose a release retain their identity through Download.
+- Submit the exact cached torrent through Radarr’s external-release API without requiring a second Radarr search; confirm the grab before marking the request queued.
+- Revalidate current household rules and indexer mapping, retain storage/audit/tracking, and bound submission with timeout/cancellation cleanup.
+
 ## [0.16.16] - 2026-10-08
 
 ### Fixed

@@ -29,6 +29,10 @@ async def movie_releases(
         finally:
             control.metadata_cache.reset(token)
 
+    return await _until_disconnected(discover(), request, tmdb_id, "release_search")
+
+
+async def _until_disconnected(operation, request, tmdb_id, workflow):
     finished = asyncio.Event()
 
     async def disconnected():
@@ -38,7 +42,7 @@ async def movie_releases(
             await asyncio.sleep(0.1)
 
     started = monotonic()
-    work = asyncio.create_task(discover())
+    work = asyncio.create_task(operation)
     watcher = asyncio.create_task(disconnected())
     outcome = 'success'
     try:
@@ -63,8 +67,32 @@ async def movie_releases(
             if not task.done():
                 task.cancel()
         await asyncio.gather(work, watcher, return_exceptions=True)  # drain cancelled children only
-        control.logger.info('release_search tmdb_id=%s provider=endpoint outcome=%s elapsed_ms=%s',
-                            tmdb_id, outcome, round((monotonic()-started)*1000))
+        control.logger.info('%s tmdb_id=%s provider=endpoint outcome=%s elapsed_ms=%s',
+                            workflow, tmdb_id, outcome, round((monotonic()-started)*1000))
+
+
+async def request_movie(
+    tmdb_id: int, payload: main.MovieRequestCreate, principal: main.CurrentUser, request: Request,
+):
+    from . import runtime
+
+    async def submit():
+        try:
+            # Includes preset loading and the entire shared request lifecycle.
+            async with asyncio.timeout(runtime.HANDOFF_SECONDS):
+                return await preset_main._preset_request_movie(tmdb_id, payload, principal)
+        except TimeoutError as error:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=504, detail="Radarr release submission timed out. Check Downloads before trying again.") from error
+
+    return await _until_disconnected(submit(), request, tmdb_id, "release_handoff")
+
+
+# Preset imports captured enhanced_main.request_movie, not the runtime route
+# replacement. Install the final handoff explicitly after the extension chain.
+from . import runtime as _runtime  # noqa: E402
+preset_main._original_request_movie = _runtime.request_movie
+enhanced_main._replace_route('/api/movies/{tmdb_id}/request', 'POST', request_movie)
 
 
 enhanced_main._replace_route('/api/movies/{tmdb_id}/releases', 'POST', movie_releases)

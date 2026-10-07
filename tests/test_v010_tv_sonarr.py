@@ -151,7 +151,7 @@ def test_tv_request_entire_series_and_selected_seasons() -> None:
 
 
 def test_tv_routes_and_version_registered() -> None:
-    assert tv_ui.app.version == "0.16.16"
+    assert tv_ui.app.version == "0.16.17"
     paths = {route.path for route in tv_ui.app.routes}
     assert "/api/catalog/tv" in paths
     assert "/api/catalog/tv/{tmdb_id}" in paths
