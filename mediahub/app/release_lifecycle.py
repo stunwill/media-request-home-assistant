@@ -504,6 +504,7 @@ _RELEASE_LIFECYCLE_UI = r"""
   let releaseSearchGeneration=0;
   let movieReleaseSearch=null;
   function releaseSearchCurrent(search){return movieReleaseSearch===search&&search.generation===releaseSearchGeneration&&state.movie===search.movie&&state.movie?.tmdb_id===search.tmdbId&&document.getElementById('release-area')===search.area&&!document.getElementById('modal').classList.contains('hidden');}
+  function focusReleaseArea(area){const dialog=area?.closest('.dialog');if(!dialog)return;requestAnimationFrame(()=>{if(!area.isConnected)return;const top=Math.max(0,area.offsetTop-16);dialog.scrollTo({top,behavior:'auto'});});}
   cancelReleaseSearch=function(){
     const search=movieReleaseSearch;
     if(!search)return;
@@ -529,6 +530,7 @@ _RELEASE_LIFECYCLE_UI = r"""
     try{
       area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty" role="status">Searching Radarr and Prowlarr for available releases…<br>This search has an 18-second server limit.<div><button class="button" id="cancel-release-search">Cancel Search</button></div></div>`;
       document.getElementById('cancel-release-search')?.addEventListener('click',cancelReleaseSearch);
+      focusReleaseArea(area);
       search.deadline=setTimeout(()=>{search.status='TIMED_OUT';controller.abort();search.rejectAbort(new DOMException('Release search timed out','AbortError'));},22000);
       const suffix=manualOverride?'?manual_override=true':'';
       const data=await Promise.race([api(`movies/${search.tmdbId}/releases${suffix}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selectedRules),signal:controller.signal}),abort]);
@@ -543,6 +545,7 @@ _RELEASE_LIFECYCLE_UI = r"""
       const unavailableRows=unavailable.map(release=>`<article class="release" data-eligible="false"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${Number(release.size_gb||0).toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div>${releaseReason(release)}</div><button class="button" disabled>${esc(release.rejection_label||'Unavailable')}</button></article>`).join('');
       area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${releaseSummary(data)}</div><button class="button" id="rerun-search">Search again</button></div><div class="releases">${availableRows||(!unavailableRows?`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`:'')}</div>${unavailableRows?`<details class="unavailable-releases"><summary>Unavailable releases (${unavailable.length})</summary><div class="releases">${unavailableRows}</div></details>`:''}`;
       document.getElementById('rerun-search').addEventListener('click',()=>findReleases(manualOverride));
+      focusReleaseArea(area);
       area.querySelectorAll('[data-token]').forEach(button=>button.addEventListener('click',()=>submitRequest(button.dataset.token,button)));
     }catch(error){
       if(!releaseSearchCurrent(search))return;
