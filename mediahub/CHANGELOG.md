@@ -1,5 +1,11 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.8-dev
+
+- Prevented direct Prowlarr fallback searches from leaving the release-selection UI waiting for slow serial indexer requests.
+- Movie-category and identity-filtered broad Prowlarr searches now run concurrently with bounded timeouts.
+- Added regression coverage for concurrent fallback discovery while preserving Movie/TV identity isolation.
+
 ## 0.16.7-dev
 
 - Fixed Movie release discovery so Radarr zero-result searches fall back to Prowlarr for older titles as well as recent releases.
