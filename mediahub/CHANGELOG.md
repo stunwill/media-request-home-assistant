@@ -1,5 +1,11 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.11-dev
+
+- Fixed a browser JavaScript syntax error introduced by the cancellable Choose a Release change.
+- Restored Browse catalogue loading, search, Setup navigation, Downloads navigation and movie-detail interactions.
+- Added regression coverage preventing literal escaped newlines between JavaScript statements.
+
 ## 0.16.10-dev
 
 - Kept Home Assistant and MediaHub navigation responsive while Choose a release is searching.
