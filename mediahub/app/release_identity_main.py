@@ -7,7 +7,7 @@ from . import enhanced_main, main, preset_main, release_identity, tv_release_sel
 app = preset_main.app
 app.version = "0.13.0-dev"
 
-_original_search_movie_releases = enhanced_main.search_movie_releases
+_original_search_movie_releases = preset_main._original_search_movie_releases
 _original_request_movie = enhanced_main.request_movie
 _original_season_releases = tv_release_selection.season_releases
 _original_episode_releases = tv_release_selection.episode_releases
