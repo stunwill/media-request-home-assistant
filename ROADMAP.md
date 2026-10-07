@@ -10,6 +10,16 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.11
+
+Status: Corrective release in review
+
+- [x] Identify the startup-wide mobile interaction regression introduced by the release-search cancellation change.
+- [x] Correct invalid generated browser JavaScript without reverting cancellable release searches.
+- [x] Restore Browse, Downloads, Setup and movie-detail interactions.
+- [x] Include the Home Assistant-visible version bump in the corrective PR.
+- [x] Add regression coverage for the generated JavaScript boundary.
+
 ## v0.16.10
 
 Status: Corrective release in review
