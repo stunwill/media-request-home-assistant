@@ -28,7 +28,7 @@ def run(coro):
 
 def test_final_route_and_capture_graph():
     route = next(r for r in watchlist_main.app.routes if r.path == '/api/movies/{tmdb_id}/releases')
-    assert watchlist_main.app.version == "0.16.15-dev"
+    assert watchlist_main.app.version == "0.16.15"
     assert route.endpoint is endpoint.movie_releases
     assert route.dependant.call is endpoint.movie_releases
     assert release_identity_main._original_search_movie_releases is runtime.search_movie_releases
