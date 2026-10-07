@@ -1,5 +1,11 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.9-dev
+
+- Added a single server-side deadline around direct Prowlarr release discovery and Radarr indexer mapping.
+- Added a browser-side timeout so Choose a release always exits its searching state.
+- Returns an actionable timeout message when Prowlarr or an indexer does not respond in time.
+
 ## 0.16.8-dev
 
 - Prevented direct Prowlarr fallback searches from leaving the release-selection UI waiting for slow serial indexer requests.
