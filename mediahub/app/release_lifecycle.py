@@ -11,6 +11,8 @@ from pydantic import BaseModel
 
 from . import dual_login, main, release_activity, runtime
 
+from . import release_search_control as search_control
+
 app = dual_login.app
 app.version = "0.7.0-dev"
 logger = logging.getLogger("mediahub.release_lifecycle")
@@ -244,19 +246,23 @@ def _watch_public(row: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def _read_watch(tmdb_id: int, user_id: str):
+    initialise_watch_database()
+    with main.connect_db() as db:
+        return _watch_public(_watch_row(db, tmdb_id, user_id))
+
+
 async def movie_details(tmdb_id: int, principal: main.CurrentUser) -> dict[str, Any]:
-    tmdb, _, _ = main.configured_clients(main.load_options())
+    tmdb, _, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
     try:
-        movie = await tmdb.details(tmdb_id)
+        movie = await search_control.movie_metadata(tmdb, tmdb_id)
     except runtime.media_services.MediaServiceError as error:
         raise main.service_http_error(error) from error
     lifecycle = classify_movie(movie)
     movie["lifecycle"] = lifecycle
     movie["lifecycle_message"] = lifecycle_message(lifecycle)
     movie["digital_release_label"] = lifecycle["digital_display"] or "Digital release date not announced"
-    initialise_watch_database()
-    with main.connect_db() as db:
-        movie["watch"] = _watch_public(_watch_row(db, tmdb_id, principal.user_id))
+    movie["watch"] = await asyncio.to_thread(_read_watch, tmdb_id, principal.user_id)
     return movie
 
 
@@ -495,25 +501,68 @@ _RELEASE_LIFECYCLE_UI = r"""
   function releaseSummary(data){const entries=Object.entries(data.rejection_summary||{});if(!entries.length)return '';return `<details class="release-summary-compact"><summary><strong>Why were releases excluded?</strong></summary>${entries.map(([category,count])=>`<div class="release-summary-row"><span>${esc(summaryLabel(category))}</span><strong>${count}</strong></div>`).join('')}</details>`;}
   function releaseReason(release){const primary=release.primary_rejection;if(!primary)return '';const extra=(release.rejection_details||[]).filter(item=>item!==primary);return `<div class="release-primary-reason"><strong>${esc(release.rejection_label||'UNAVAILABLE')}</strong>${esc(primary.message||'Release unavailable')}${extra.length?`<details class="release-diagnostics"><summary>Details</summary>${extra.map(item=>`<div>${esc(item.message||'')}</div>`).join('')}</details>`:''}</div>`;}
 
+  let releaseSearchGeneration=0;
+  let movieReleaseSearch=null;
+  function releaseSearchCurrent(search){return movieReleaseSearch===search&&search.generation===releaseSearchGeneration&&state.movie===search.movie&&state.movie?.tmdb_id===search.tmdbId&&document.getElementById('release-area')===search.area&&!document.getElementById('modal').classList.contains('hidden');}
+  cancelReleaseSearch=function(){
+    const search=movieReleaseSearch;
+    if(!search)return;
+    if(releaseSearchCurrent(search)){
+      search.area.dataset.searchState='CANCELLED';search.area.setAttribute('aria-busy','false');
+      search.area.innerHTML='<div class="empty" role="status">Release search cancelled.<button class="button" id="retry-release-search">Try again</button></div>';
+      document.getElementById('retry-release-search')?.addEventListener('click',()=>findReleases(search.manualOverride));
+    }
+    search.status='CANCELLED';clearTimeout(search.deadline);search.controller.abort();search.rejectAbort(new DOMException('Search cancelled','AbortError'));
+    movieReleaseSearch=null;activeReleaseSearch=null;releaseSearchGeneration++;
+  };
+  window.cancelReleaseSearch=cancelReleaseSearch;
   findReleases=async function(manualOverride=false){
-    const area=document.getElementById('release-area');
-    const selectedRules=rules();
-    area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty">Searching available releases...</div>`;
+    cancelReleaseSearch();
+    const area=document.getElementById('release-area'),movie=state.movie;
+    if(!area||!movie||movie.media_type==='tv')return;
+    const selectedRules=rules(),controller=new AbortController();
+    const search={area,movie,tmdbId:movie.tmdb_id,controller,generation:++releaseSearchGeneration,status:'SEARCHING',manualOverride};
+    movieReleaseSearch=search;activeReleaseSearch=controller;
+    const abort=new Promise((_,reject)=>{search.rejectAbort=reject;});
+    const finish=status=>{search.status=status;area.dataset.searchState=status;area.setAttribute('aria-busy','false');};
+    area.dataset.searchState='SEARCHING';area.setAttribute('aria-busy','true');
     try{
+      area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty" role="status">Searching Radarr and Prowlarr for available releases…<br>This search has an 18-second server limit.<div><button class="button" id="cancel-release-search">Cancel Search</button></div></div>`;
+      document.getElementById('cancel-release-search')?.addEventListener('click',cancelReleaseSearch);
+      search.deadline=setTimeout(()=>{search.status='TIMED_OUT';controller.abort();search.rejectAbort(new DOMException('Release search timed out','AbortError'));},22000);
       const suffix=manualOverride?'?manual_override=true':'';
-      const request=api(`movies/${state.movie.tmdb_id}/releases${suffix}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selectedRules)});\n      const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Release search is taking too long. Check your Prowlarr/Radarr connection and try again.')),45000));\n      const data=await Promise.race([request,timeout]);\n      if(!document.body.contains(area))return;
+      const data=await Promise.race([api(`movies/${search.tmdbId}/releases${suffix}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selectedRules),signal:controller.signal}),abort]);
+      if(!releaseSearchCurrent(search))return;
       if(data.search_state==='deferred_upcoming'){
-        area.innerHTML=`<div class="empty">${esc(data.search_message)}</div>`;return;
+        finish('NO_RESULTS');area.innerHTML=`<div class="empty">${esc(data.search_message)}</div>`;return;
       }
+      finish((data.releases||[]).length?'SUCCESS':'NO_RESULTS');
       const available=(data.releases||[]).filter(release=>release.eligible);
       const unavailable=(data.releases||[]).filter(release=>!release.eligible);
-      const availableRows=available.map(release=>`<article class="release" data-eligible="true"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${release.size_gb.toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div></div><button class="button primary" data-token="${esc(release.release_token||'')}">Download</button></article>`).join('');
-      const unavailableRows=unavailable.map(release=>`<article class="release" data-eligible="false"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${release.size_gb.toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div>${releaseReason(release)}</div><button class="button" disabled>${esc(release.rejection_label||'Unavailable')}</button></article>`).join('');
+      const availableRows=available.map(release=>`<article class="release" data-eligible="true"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${Number(release.size_gb||0).toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div></div><button class="button primary" data-token="${esc(release.release_token||'')}">Download</button></article>`).join('');
+      const unavailableRows=unavailable.map(release=>`<article class="release" data-eligible="false"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${Number(release.size_gb||0).toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div>${releaseReason(release)}</div><button class="button" disabled>${esc(release.rejection_label||'Unavailable')}</button></article>`).join('');
       area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${releaseSummary(data)}</div><button class="button" id="rerun-search">Search again</button></div><div class="releases">${availableRows||(!unavailableRows?`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`:'')}</div>${unavailableRows?`<details class="unavailable-releases"><summary>Unavailable releases (${unavailable.length})</summary><div class="releases">${unavailableRows}</div></details>`:''}`;
       document.getElementById('rerun-search').addEventListener('click',()=>findReleases(manualOverride));
       area.querySelectorAll('[data-token]').forEach(button=>button.addEventListener('click',()=>submitRequest(button.dataset.token,button)));
-    }catch(error){if(!document.body.contains(area))return;const message=error?.message||'Release search failed. Please try again.';area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty"><strong>Release search could not be completed.</strong><br>${esc(message)}<div style="margin-top:12px"><button class="button" id="retry-release-search">Try again</button></div></div>`;document.getElementById('retry-release-search')?.addEventListener('click',()=>findReleases(manualOverride));}
+    }catch(error){
+      if(!releaseSearchCurrent(search))return;
+      const timedOut=search.status==='TIMED_OUT'||error?.status===504;
+      finish(timedOut?'TIMED_OUT':error?.name==='AbortError'?'CANCELLED':'ERROR');
+      const message=timedOut?'Release search timed out. Prowlarr or an indexer is taking too long to respond.':error?.message||'Release search failed. Please try again.';
+      area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty" role="status"><strong>Release search could not be completed.</strong><br>${esc(message)}<div style="margin-top:12px"><button class="button" id="retry-release-search">Try again</button>${state.user?.role==='admin'?'<button class="button" id="release-check-setup">Check Setup</button>':''}</div></div>`;
+      document.getElementById('retry-release-search')?.addEventListener('click',()=>findReleases(manualOverride));
+      document.getElementById('release-check-setup')?.addEventListener('click',()=>{closeModal();showView('setup');});
+    }finally{
+      clearTimeout(search.deadline);
+      if(movieReleaseSearch===search){
+        if(search.status==='SEARCHING')finish('ERROR');
+        movieReleaseSearch=null;
+        if(activeReleaseSearch===controller)activeReleaseSearch=null;
+      }
+    }
   };
+  window.MEDIAHUB_FIND_MOVIE_RELEASES=findReleases;
+
 </script>
 """
 

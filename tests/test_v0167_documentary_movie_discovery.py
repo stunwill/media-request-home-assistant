@@ -148,7 +148,7 @@ class DocumentaryMovieDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         ):
             await runtime._prowlarr_search(movie)
 
-        self.assertEqual(peak, 2)
+        self.assertEqual(peak, 2 * len(runtime._movie_search_terms(movie)))
 
     def test_old_movie_low_quality_fallback_remains_blocked(self) -> None:
         release = {

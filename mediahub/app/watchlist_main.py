@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from . import main, mobile_ux_ui, preset_main, release_lifecycle, runtime
 
 app = mobile_ux_ui.app
-app.version = "0.15.0-dev"
+app.version = "0.16.15-dev"
 logger = logging.getLogger("mediahub.watchlist")
 
 
@@ -281,3 +281,6 @@ _WATCHLIST_UI = r"""
 
 if "MEDIAHUB_WATCHLIST_V0150" not in main.INDEX_HTML:
     main.INDEX_HTML = main.INDEX_HTML.replace("</body>", _WATCHLIST_UI + "\n</body>")
+
+# Final installation must follow the entire extension import chain.
+from . import movie_release_endpoint as _movie_release_endpoint  # noqa: E402,F401

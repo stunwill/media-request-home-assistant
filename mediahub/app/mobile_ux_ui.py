@@ -3,7 +3,7 @@ from __future__ import annotations
 from . import main, mobile_live_ui, preset_ui
 
 app = mobile_live_ui.app
-app.version = "0.16.14-dev"
+app.version = "0.16.15-dev"
 
 _MOBILE_UX_UI = r"""
 <style>
@@ -63,7 +63,7 @@ _MOBILE_UX_UI = r"""
   let mutationPending=false;const refreshDerivedUi=()=>{if(mutationPending)return;mutationPending=true;requestAnimationFrame(()=>{mutationPending=false;removeLegacyRules();improveReleaseCards();updateFilterButton();document.querySelectorAll('.poster img,.cast-card img').forEach(img=>{if(!img.loading)img.loading='lazy';});});};new MutationObserver(refreshDerivedUi).observe(document.body,{subtree:true,childList:true});removeLegacyRules();
   document.addEventListener('click',event=>{const button=event.target.closest('#release-area .button,[data-release-token]');if(!button)return;const area=q('release-area');if(!area||button.disabled)return;requestAnimationFrame(()=>{if(/requesting/i.test(button.textContent||''))area.querySelectorAll('button').forEach(other=>{if(other!==button)other.disabled=true;});});},true);
 
-  const vv=window.visualViewport;function keyboardState(){if(!vv||!mobile())return;const keyboard=Math.max(0,window.innerHeight-vv.height-vv.offsetTop)>120;nav?.classList.toggle('is-suspended',keyboard);document.documentElement.style.setProperty('--mediahub-vvh',`${vv.height}px`);}vv?.addEventListener('resize',keyboardState);vv?.addEventListener('scroll',keyboardState);keyboardState();
+  const vv=window.visualViewport;function keyboardState(){if(!vv||!mobile())return;const keyboard=Math.max(0,window.innerHeight-vv.height-vv.offsetTop)>120;nav?.classList.toggle('is-suspended',keyboard||!!(modal&&!modal.classList.contains('hidden')));document.documentElement.style.setProperty('--mediahub-vvh',`${vv.height}px`);}vv?.addEventListener('resize',keyboardState);vv?.addEventListener('scroll',keyboardState);keyboardState();
 })();
 </script>
 """

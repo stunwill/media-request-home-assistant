@@ -14,4 +14,4 @@ def test_movie_release_route_is_rebound_after_runtime_discovery_patch() -> None:
 def test_direct_prowlarr_fallback_retains_hard_deadline() -> None:
     source = Path("mediahub/app/runtime.py").read_text()
     assert "async with asyncio.timeout(18):" in source
-    assert "raw_results = await _prowlarr_search(movie)" in source
+    assert "raw_results = await prowlarr_task" in source

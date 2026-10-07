@@ -5,13 +5,13 @@ from mediahub.app import main
 
 def test_movie_release_search_has_terminal_timeout_and_retry_state() -> None:
     html = main.INDEX_HTML
-    assert "Promise.race([request,timeout])" in html
+    assert "const data=await Promise.race([api(" in html
     assert r")}\\n      const timeout=" not in html
     assert r"));\\n      const data=" not in html
-    assert "45000" in html
+    assert "},22000)" in html
     assert "Release search could not be completed." in html
     assert "retry-release-search" in html
-    assert "Release search is taking too long." in html
+    assert "Release search timed out." in html
 
 
 def test_inline_movie_release_search_does_not_snapshot_parent_detail() -> None:
@@ -25,4 +25,4 @@ def test_inline_movie_release_search_does_not_snapshot_parent_detail() -> None:
 
 def test_stale_release_response_does_not_write_into_replaced_detail() -> None:
     html = main.INDEX_HTML
-    assert "if(!document.body.contains(area))return;" in html
+    assert "if(!releaseSearchCurrent(search))return;" in html

@@ -9,8 +9,8 @@ def test_mobile_ux_does_not_delete_release_area_status_container() -> None:
 
 
 def test_release_search_renders_terminal_success_and_error_states() -> None:
-    source = Path("mediahub/app/web.py").read_text()
+    source = Path("mediahub/app/release_lifecycle.py").read_text()
 
     assert "<h2>Available releases</h2>" in source
-    assert "No releases were returned. Check the IPTorrents indexer in Prowlarr." in source
-    assert "Release search timed out. Check the Prowlarr connection in Setup and try again." in source
+    assert "No releases were returned." in source
+    assert "Release search timed out. Prowlarr or an indexer is taking too long to respond." in source

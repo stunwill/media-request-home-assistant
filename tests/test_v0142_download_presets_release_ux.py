@@ -222,7 +222,7 @@ def test_legacy_standalone_tv_setup_ui_is_not_active() -> None:
 
 def test_deployed_entrypoint_contains_unified_download_presets_ui() -> None:
     html = main.INDEX_HTML
-    assert mobile_ux_ui.app.version == "0.15.0-dev"
+    assert mobile_ux_ui.app.version == "0.16.15-dev"
     for marker in (
         "Download Presets",
         "Maximum Movie release size (GB)",
@@ -309,7 +309,8 @@ def test_opaque_tokens_are_removed_from_rejected_tv_results() -> None:
 
 
 def test_movie_search_only_caches_tokens_inside_eligible_branches() -> None:
-    source_names = release_identity_main._original_search_movie_releases.__code__.co_names
+    from mediahub.app import runtime
+    source_names = runtime._search_movie_releases.__code__.co_names
     assert "cache_release" in source_names
     html = main.INDEX_HTML
     assert "data-token=\"${esc(release.release_token||'')}\"" in html

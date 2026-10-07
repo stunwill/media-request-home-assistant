@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from typing import Any, Awaitable, Callable
 
 from fastapi import Query
 
 from . import enhanced_main, main, runtime
+
+from . import release_search_control as search_control
 
 app = runtime.app
 app.version = "0.6.8-dev"
@@ -60,11 +63,28 @@ def _expanded_policy(release: dict[str, Any]) -> dict[str, Any]:
 async def _authorized_expanded_results(movie: dict[str, Any]) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for provider in AUTHORIZED_RELEASE_PROVIDERS:
-        provider_results = await provider(movie)
+        provider_results = await search_control.stage('authorized_source', movie.get('tmdb_id'), provider(movie))
         for item in provider_results:
             if isinstance(item, dict):
                 results.append(dict(item))
     return results
+
+
+def _audit_expanded(tmdb_id, principal, releases):
+    with main.connect_db() as db:
+        main.record_audit(
+            db,
+            actor_id=principal.user_id,
+            actor_name=principal.display_name,
+            action="movie_authorized_expanded_search",
+            request_id=None,
+            details={
+                "tmdb_id": tmdb_id,
+                "result_count": len(releases),
+                "maximum_size_gb": EXPANDED_MAX_SIZE_GB,
+            },
+        )
+        db.commit()
 
 
 async def movie_releases(
@@ -73,9 +93,9 @@ async def movie_releases(
     principal: main.CurrentUser,
     expanded: bool = Query(default=False),
 ) -> dict[str, Any]:
-    tmdb, _, _ = main.configured_clients(main.load_options())
+    tmdb, _, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
     try:
-        movie = await tmdb.details(tmdb_id)
+        movie = await search_control.movie_metadata(tmdb, tmdb_id)
     except runtime.media_services.MediaServiceError as error:
         raise main.service_http_error(error) from error
 
@@ -112,21 +132,7 @@ async def movie_releases(
         reverse=True,
     )
 
-    with main.connect_db() as db:
-        main.record_audit(
-            db,
-            actor_id=principal.user_id,
-            actor_name=principal.display_name,
-            action="movie_authorized_expanded_search",
-            request_id=None,
-            details={
-                "tmdb_id": tmdb_id,
-                "result_count": len(releases),
-                "maximum_size_gb": EXPANDED_MAX_SIZE_GB,
-            },
-        )
-        db.commit()
-
+    await asyncio.to_thread(_audit_expanded, tmdb_id, principal, releases)
     return {
         "radarr_movie_id": 0,
         "rules": rules.model_dump(),
