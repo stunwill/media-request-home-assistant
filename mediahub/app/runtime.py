@@ -420,11 +420,17 @@ async def search_movie_releases(
         # low-quality recent-release fallback rules from leaking into older titles.
 
     _, radarr, _ = main.configured_clients(main.load_options())
-    raw_results = await _prowlarr_search(movie)
-    if not raw_results:
-        return radarr_movie, [], False
-
-    radarr_indexers = await _radarr_indexers(radarr)
+    try:
+        async with asyncio.timeout(18):
+            raw_results = await _prowlarr_search(movie)
+            if not raw_results:
+                return radarr_movie, [], False
+            radarr_indexers = await _radarr_indexers(radarr)
+    except TimeoutError as error:
+        raise HTTPException(
+            status_code=504,
+            detail="Release search timed out. Prowlarr or an indexer did not respond in time. Check the Prowlarr connection in Setup and try again.",
+        ) from error
     public_results: list[dict[str, Any]] = []
     for raw in raw_results:
         mapped_indexer = _mapped_radarr_indexer_id(raw, radarr_indexers)
