@@ -12,7 +12,7 @@ Status: Feature release in review
 
 ## v0.16.15
 
-Status: Corrective release in review
+Status: Delivered
 
 - [x] Trace and test the final deployed Movie release endpoint and composed JavaScript.
 - [x] Bound every discovery stage and the complete endpoint; propagate disconnect cancellation.

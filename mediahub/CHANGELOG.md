@@ -1,6 +1,6 @@
 # MediaHub Home Assistant Changelog
 
-## 0.16.15-dev
+## 0.16.15
 
 - Choose a release now has a complete 18-second server limit and 22-second browser escape hatch.
 - Cancel Search, Back, Close and replacement searches terminate pending requests and reject stale responses.

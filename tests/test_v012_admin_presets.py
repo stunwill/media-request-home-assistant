@@ -190,7 +190,7 @@ def test_setup_is_split_into_service_connections_and_download_presets() -> None:
 
 
 def test_v012_routes_remain_registered_after_later_versions() -> None:
-    assert preset_ui.app.version.endswith("-dev")
+    assert preset_ui.app.version == "0.16.15"
     paths = {route.path for route in preset_ui.app.routes}
     assert "/api/setup/presets" in paths
     assert "/api/setup/presets/reset" in paths
