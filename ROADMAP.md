@@ -10,6 +10,16 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.10
+
+Status: Corrective release in review
+
+- [x] Make active Movie release searches explicitly cancellable.
+- [x] Cancel release discovery when leaving Movie detail through Back or close.
+- [x] Keep navigation responsive while Choose a release is pending.
+- [x] Preserve keyboard-specific mobile navigation suspension.
+- [x] Add regression coverage for release-search cancellation and navigation responsiveness.
+
 ## v0.16.9
 
 Status: Corrective release in review
