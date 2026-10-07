@@ -1,5 +1,11 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.13-dev
+
+- Fixed the mobile UX cleanup observer deleting the live Movie release-search status/results container.
+- Preserve searching, zero-result, timeout and available-release messages after Choose a Release.
+- Added regression coverage for terminal release-search rendering states.
+
 ## 0.16.12-dev
 
 - Fixed the deployed Movie releases route so Choose a Release uses the runtime Radarr-to-Prowlarr discovery pipeline.

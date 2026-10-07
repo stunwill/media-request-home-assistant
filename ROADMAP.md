@@ -10,6 +10,16 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.13
+
+Status: Corrective release in review
+
+- [x] Reproduce the blank release-results transition from the supplied iPhone recording.
+- [x] Identify the mobile MutationObserver cleanup conflict with the base release renderer.
+- [x] Preserve the live release status/results container while still removing legacy editable rule controls.
+- [x] Add regression coverage for visible terminal release-search states.
+- [x] Include the Home Assistant-visible version bump in the same PR.
+
 ## v0.16.12
 
 Status: Corrective release in review
