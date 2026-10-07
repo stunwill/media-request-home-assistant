@@ -10,6 +10,17 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.7
+
+Status: Corrective release in review
+
+- [x] Fall back to direct Prowlarr discovery when Radarr returns no Movie releases, including older catalogue titles.
+- [x] Discover standalone documentary movies filed outside tracker Movie categories without merging TV-only categories into normal Movie searches.
+- [x] Reject TV episode and season results from Movie release selection through release identity validation.
+- [x] Keep low-quality CAM/TS fallback restricted to current-year or recently released movies.
+- [x] Add regression coverage for documentary Movie discovery and media-type isolation.
+
+
 ## v0.16.6
 
 Status: Corrective release in review
