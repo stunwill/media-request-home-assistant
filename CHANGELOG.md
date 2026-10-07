@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.14-dev] - 2026-10-08
+
+### Fixed
+
+- Stabilized the mobile Movie detail scroll lifecycle so newly rendered details start at the top.
+- Prevented the fixed bottom navigation from overlaying full-screen Movie detail content.
+- Added regression coverage for modal navigation suspension, deferred scroll reset and bottom safe space.
+
 ## [0.16.13-dev] - 2026-10-07
 
 ### Fixed
