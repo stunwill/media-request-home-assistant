@@ -10,6 +10,16 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.14
+
+Status: Corrective release in review
+
+- [x] Audit the mobile Movie-detail wrapper and scroll lifecycle.
+- [x] Reset the detail dialog after rendered content has been committed.
+- [x] Suspend bottom navigation while the full-screen detail modal is open.
+- [x] Reserve bottom safe space for detail content.
+- [x] Add regression coverage and include the HA-visible version bump.
+
 ## v0.16.13
 
 Status: Corrective release in review
