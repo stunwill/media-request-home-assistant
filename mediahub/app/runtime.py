@@ -503,6 +503,14 @@ main.analyse_download_workflow = analyse_download_workflow
 enhanced_main._radarr_duplicate = _radarr_duplicate
 enhanced_main.search_movie_releases = search_movie_releases
 
+# The movie release route was registered before this runtime layer replaced the
+# discovery function. Rebind the existing FastAPI route as well so Choose a Release
+# actually executes the Radarr -> direct Prowlarr fallback and its hard deadline.
+for route in app.routes:
+    if getattr(route, "path", None) == "/api/movies/{tmdb_id}/releases" and "POST" in (getattr(route, "methods", set()) or set()):
+        route.endpoint = enhanced_main.movie_releases
+        route.dependant.call = enhanced_main.movie_releases
+
 # The request endpoint itself holds a release token branch, so replace only that route
 # to translate direct-Prowlarr selections into the existing automatic request path.
 enhanced_main._replace_route("/api/movies/{tmdb_id}/request", "POST", request_movie)
