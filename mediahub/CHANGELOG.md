@@ -1,5 +1,11 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.10-dev
+
+- Kept Home Assistant and MediaHub navigation responsive while Choose a release is searching.
+- Active Movie release searches can now be cancelled immediately by Back or close actions.
+- Cleaned up completed search controllers while preserving the existing search timeout protection.
+
 ## 0.16.9-dev
 
 - Added a single server-side deadline around direct Prowlarr release discovery and Radarr indexer mapping.
