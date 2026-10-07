@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.9-dev] - 2026-10-07
+
+### Fixed
+
+- Prevented Choose a release from remaining indefinitely in its searching state when Prowlarr or an indexer is slow.
+- Added server and browser deadlines with a visible timeout error path.
+- Preserved the v0.16.8 concurrent documentary-capable release discovery behavior.
+
 ## [0.16.8-dev] - 2026-10-07
 
 ### Fixed
