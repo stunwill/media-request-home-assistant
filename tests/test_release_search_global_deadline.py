@@ -16,4 +16,5 @@ def test_choose_release_ui_has_client_side_escape_hatch() -> None:
     assert "setTimeout(()=>controller.abort(),22000)" in source
     assert "signal:controller.signal" in source
     assert "error?.name==='AbortError'" in source
-    assert "finally{clearTimeout(deadline);}" in source
+    assert "finally{clearTimeout(deadline);" in source
+    assert "if(activeReleaseSearch===controller)activeReleaseSearch=null" in source
