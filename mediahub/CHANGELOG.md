@@ -1,5 +1,11 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.12-dev
+
+- Fixed the deployed Movie releases route so Choose a Release uses the runtime Radarr-to-Prowlarr discovery pipeline.
+- Restored direct Prowlarr fallback for older movies such as The Donut King when Radarr returns no releases.
+- Ensured the deployed route reaches the existing 18-second server deadline instead of remaining on the pre-runtime handler.
+
 ## 0.16.11-dev
 
 - Fixed a browser JavaScript syntax error introduced by the cancellable Choose a Release change.
