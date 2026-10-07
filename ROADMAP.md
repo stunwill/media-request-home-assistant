@@ -10,6 +10,15 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.8
+
+Status: Corrective release in review
+
+- [x] Bound direct Prowlarr fallback searches so release selection cannot wait indefinitely on a slow indexer.
+- [x] Run Movie-category and identity-filtered broad searches concurrently.
+- [x] Preserve Movie/TV identity isolation during broad documentary discovery.
+- [x] Add regression coverage for concurrent Prowlarr fallback discovery.
+
 ## v0.16.7
 
 Status: Corrective release in review
