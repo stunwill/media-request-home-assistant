@@ -4,7 +4,7 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
-## [0.16.15-dev] - 2026-10-08
+## [0.16.15] - 2026-10-08
 
 ### Fixed
 
