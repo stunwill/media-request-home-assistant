@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.10-dev] - 2026-10-07
+
+### Fixed
+
+- Prevented Choose a release from trapping the Movie detail UI while release discovery is pending.
+- Back and close actions now cancel the active release search immediately.
+- Home Assistant and MediaHub navigation remain available during release discovery, while keyboard-specific mobile navigation suspension is preserved.
+
 ## [0.16.9-dev] - 2026-10-07
 
 ### Fixed
