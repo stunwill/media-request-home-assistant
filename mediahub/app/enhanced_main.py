@@ -4,10 +4,13 @@ import asyncio
 from datetime import date, datetime
 from typing import Any
 
+import httpx
 from fastapi import HTTPException
 
 from . import main
 from .media_services import MediaServiceError
+
+from . import release_search_control as search_control
 
 app = main.app
 app.version = "0.6.6-dev"
@@ -120,10 +123,11 @@ async def search_movie_releases(
     *,
     movie: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], bool]:
-    tmdb, radarr, _ = main.configured_clients(main.load_options())
+    tmdb, radarr, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
+    radarr.timeout = httpx.Timeout(6, connect=3, pool=3)
     try:
         if movie is None:
-            movie = await tmdb.details(tmdb_id)
+            movie = await search_control.movie_metadata(tmdb, tmdb_id)
         radarr_movie = await radarr.ensure_movie(tmdb_id)
         releases = await radarr.releases(int(radarr_movie["id"]))
     except (KeyError, TypeError, ValueError) as error:
@@ -138,7 +142,7 @@ async def search_movie_releases(
         public["release_token"] = main.cache_release(tmdb_id, user_id, release)
         strict_public.append(public)
 
-    if any(item["eligible"] for item in strict_public) or not is_recent_movie(movie):
+    if any(item["eligible"] for item in strict_public) or not await asyncio.to_thread(is_recent_movie, movie):
         return radarr_movie, strict_public, False
 
     fallback_public: list[dict[str, Any]] = []
@@ -273,22 +277,7 @@ def enhanced_startup() -> None:
     _cleanup_historical_active_duplicates()
 
 
-async def movie_releases(
-    tmdb_id: int,
-    rules: main.ReleaseRules,
-    principal: main.CurrentUser,
-) -> dict[str, Any]:
-    tmdb, _, _ = main.configured_clients(main.load_options())
-    try:
-        movie = await tmdb.details(tmdb_id)
-    except MediaServiceError as error:
-        raise main.service_http_error(error) from error
-    radarr_movie, releases, fallback_active = await search_movie_releases(
-        tmdb_id,
-        rules,
-        principal.user_id,
-        movie=movie,
-    )
+def _audit_release_search(tmdb_id, principal, releases, fallback_active):
     with main.connect_db() as db:
         main.record_audit(
             db,
@@ -303,6 +292,25 @@ async def movie_releases(
             },
         )
         db.commit()
+
+
+async def movie_releases(
+    tmdb_id: int,
+    rules: main.ReleaseRules,
+    principal: main.CurrentUser,
+) -> dict[str, Any]:
+    tmdb, _, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
+    try:
+        movie = await search_control.movie_metadata(tmdb, tmdb_id)
+    except MediaServiceError as error:
+        raise main.service_http_error(error) from error
+    radarr_movie, releases, fallback_active = await search_movie_releases(
+        tmdb_id,
+        rules,
+        principal.user_id,
+        movie=movie,
+    )
+    await asyncio.to_thread(_audit_release_search, tmdb_id, principal, releases, fallback_active)
     return {
         "radarr_movie_id": int(radarr_movie["id"]),
         "rules": rules.model_dump(),

@@ -12,6 +12,8 @@ from fastapi import HTTPException
 
 from . import enhanced_main, main, media_services
 
+from . import release_search_control as search_control
+
 app = enhanced_main.app
 app.version = "0.6.7-dev"
 
@@ -180,88 +182,74 @@ def _movie_search_terms(movie: dict[str, Any]) -> list[str]:
 
 
 async def _prowlarr_search(movie: dict[str, Any]) -> list[dict[str, Any]]:
-    """Search Prowlarr without allowing a slow tracker/category miss to stall the UI."""
-    options = main.load_options()
+    """Bound each independent query, retaining sibling results after a timeout."""
+    options = await asyncio.to_thread(main.load_options)
     integrations = options.get("integrations", {}) if isinstance(options, dict) else {}
     url = str(integrations.get("prowlarr_url") or "").rstrip("/")
     api_key = str(integrations.get("prowlarr_api_key") or "").strip()
-    if not url or not api_key:
-        return []
-
     terms = _movie_search_terms(movie)
-    if not terms:
+    if not url or not api_key or not terms:
         return []
 
-    async def fetch(client: httpx.AsyncClient, params: dict[str, Any]):
-        try:
+    async def fetch(client, params):
+        provider = 'prowlarr_movie' if 'categories' in params else 'prowlarr_broad'
+        async def request():
             response = await client.get("/api/v1/search", params=params)
             if response.status_code == 400:
-                return False, [], None
+                return []
             response.raise_for_status()
             payload = response.json()
-        except (httpx.HTTPError, ValueError) as error:
+            return payload[:100] if isinstance(payload, list) else []
+        try:
+            payload = await search_control.stage(provider, movie.get('tmdb_id'), request())
+            return True, payload, None
+        except (httpx.HTTPError, ValueError, TimeoutError) as error:
             return False, [], error
-        return True, payload if isinstance(payload, list) else [], None
 
-    results: list[dict[str, Any]] = []
-    seen: set[tuple[int, str]] = set()
+    async with httpx.AsyncClient(
+        base_url=url, timeout=httpx.Timeout(6, connect=3, pool=3),
+        headers={"X-Api-Key": api_key, "User-Agent": "MediaHub/0.16.15"},
+    ) as client:
+        tasks = [asyncio.create_task(fetch(client, params)) for term in terms for params in (
+            {"query": term, "type": "movie", "categories": 2000, "limit": 100},
+            {"query": term, "limit": 100},
+        )]
+        try:
+            responses = await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)  # cleanup only
+
+    results = []
+    seen = set()
     successful_request = False
-    last_error: Exception | None = None
-
-    try:
-        async with httpx.AsyncClient(
-            base_url=url,
-            timeout=httpx.Timeout(12),
-            headers={"X-Api-Key": api_key, "User-Agent": "MediaHub/0.16.7"},
-        ) as client:
-            for term in terms:
-                attempts = (
-                    {"query": term, "type": "movie", "categories": 2000, "limit": 100},
-                    {"query": term, "limit": 100},
-                )
-                try:
-                    responses = await asyncio.wait_for(
-                        asyncio.gather(*(fetch(client, params) for params in attempts)),
-                        timeout=15,
-                    )
-                except TimeoutError as error:
-                    last_error = error
-                    continue
-
-                for ok, payload, error in responses:
-                    successful_request = successful_request or ok
-                    if error is not None:
-                        last_error = error
-                    for item in payload:
-                        if not isinstance(item, dict) or not _matches_movie(item.get("title"), movie):
-                            continue
-                        try:
-                            indexer_id = int(item.get("indexerId") or 0)
-                        except (TypeError, ValueError):
-                            indexer_id = 0
-                        guid = str(item.get("guid") or "")
-                        key = (indexer_id, guid or str(item.get("downloadUrl") or ""))
-                        if key in seen:
-                            continue
-                        seen.add(key)
-                        results.append(item)
-                if results:
-                    break
-    except (httpx.HTTPError, ValueError) as error:
-        last_error = error
-
-    if not successful_request and last_error is not None:
-        raise HTTPException(
-            status_code=502,
-            detail="Prowlarr fallback search timed out or is unavailable. Check Prowlarr and the configured indexer in Setup.",
-        ) from last_error
+    errors = []
+    for ok, payload, error in responses:
+        successful_request |= ok
+        if isinstance(error, httpx.HTTPStatusError) and error.response.status_code in {401, 403}:
+            raise HTTPException(status_code=503, detail="Prowlarr credentials were rejected. Check Setup.") from error
+        if error is not None:
+            errors.append(error)
+        for item in payload:
+            if not isinstance(item, dict) or not _matches_movie(item.get("title"), movie):
+                continue
+            key = (int(item.get("indexerId") or item.get("indexer_id") or 0), str(item.get("guid") or item.get("downloadUrl") or item.get("title") or ""))
+            if key not in seen:
+                seen.add(key)
+                results.append(item)
+    if not successful_request and errors:
+        if all(isinstance(error, (TimeoutError, httpx.TimeoutException)) for error in errors):
+            raise search_control.timeout_error()
+        raise HTTPException(status_code=502, detail="Prowlarr fallback search is unavailable. Check Setup.")
+    search_control.logger.info('release_search tmdb_id=%s provider=prowlarr outcome=%s result_count=%s failed_paths=%s fallback=true',
+                               movie.get('tmdb_id'), 'partial' if errors else 'success', len(results), len(errors))
     return results
 
+
 async def _radarr_indexers(radarr: Any) -> list[dict[str, Any]]:
-    try:
-        payload = await radarr._request("GET", "/api/v3/indexer")
-    except Exception:
-        return []
+    payload = await radarr._request("GET", "/api/v3/indexer")
     return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
 
 
@@ -382,56 +370,74 @@ def _prowlarr_policy(
     return result
 
 
-async def search_movie_releases(
+async def search_movie_releases(tmdb_id, rules, user_id, *, movie=None):
+    try:
+        async with asyncio.timeout(18):
+            return await _search_movie_releases(tmdb_id, rules, user_id, movie=movie)
+    except TimeoutError as error:
+        raise search_control.timeout_error() from error
+
+
+async def _search_movie_releases(
     tmdb_id: int,
     rules: main.ReleaseRules,
     user_id: str,
     *,
     movie: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], bool]:
-    """Use Radarr first, then query Prowlarr directly when Radarr returns zero releases."""
+    """Run independent discovery concurrently; retain safe fallback after slow Radarr."""
     selection_key = (tmdb_id, user_id)
     preferred = _selected_prowlarr_release.get(selection_key)
 
     if movie is None:
-        tmdb, _, _ = main.configured_clients(main.load_options())
+        tmdb, _, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
         try:
-            movie = await tmdb.details(tmdb_id)
+            movie = await search_control.movie_metadata(tmdb, tmdb_id)
         except media_services.MediaServiceError as error:
             raise main.service_http_error(error) from error
 
-    if preferred is None:
-        radarr_movie, releases, fallback_active = await _original_search_movie_releases(
-            tmdb_id,
-            rules,
-            user_id,
-            movie=movie,
-        )
-        if releases:
-            return radarr_movie, releases, fallback_active
-    else:
-        _, radarr, _ = main.configured_clients(main.load_options())
-        try:
-            radarr_movie = await radarr.ensure_movie(tmdb_id)
-        except media_services.MediaServiceError as error:
-            raise main.service_http_error(error) from error
-        # A previously selected direct-Prowlarr release may belong to an older movie.
-        # Keep the exact selection available, while the normal policy still prevents
-        # low-quality recent-release fallback rules from leaking into older titles.
-
-    _, radarr, _ = main.configured_clients(main.load_options())
+    _, radarr, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
+    radarr.timeout = httpx.Timeout(6, connect=3, pool=3)
+    releases = []
+    fallback_active = False
+    prowlarr_task = asyncio.create_task(_prowlarr_search(movie))
     try:
-        async with asyncio.timeout(18):
-            raw_results = await _prowlarr_search(movie)
-            if not raw_results:
-                return radarr_movie, [], False
-            radarr_indexers = await _radarr_indexers(radarr)
-    except TimeoutError as error:
-        raise HTTPException(
-            status_code=504,
-            detail="Release search timed out. Prowlarr or an indexer did not respond in time. Check the Prowlarr connection in Setup and try again.",
-        ) from error
-    public_results: list[dict[str, Any]] = []
+        if preferred is None:
+            try:
+                radarr_movie, releases, fallback_active = await search_control.stage(
+                    'radarr_discovery', tmdb_id,
+                    _original_search_movie_releases(tmdb_id, rules, user_id, movie=movie))
+            except (TimeoutError, HTTPException) as error:
+                if isinstance(error, HTTPException) and "timed out" not in str(error.detail).lower():
+                    raise
+                # A slow interactive search must not discard independent Prowlarr
+                # results. Re-read/ensure the movie under a separate short budget.
+                radarr_movie = await search_control.stage('radarr_ensure', tmdb_id, radarr.ensure_movie(tmdb_id), 3)
+                releases = []
+            if any(item.get("eligible") for item in releases):
+                # Already-completed configuration failures remain visible.
+                if prowlarr_task.done() and not prowlarr_task.cancelled():
+                    error = prowlarr_task.exception()
+                    if isinstance(error, HTTPException) and error.status_code == 503:
+                        raise error
+                return radarr_movie, releases, fallback_active
+        else:
+            radarr_movie = await search_control.stage('radarr_ensure', tmdb_id, radarr.ensure_movie(tmdb_id), 3)
+
+        raw_results = await prowlarr_task
+        if not raw_results:
+            return radarr_movie, releases, fallback_active
+        radarr_indexers = await search_control.stage(
+            'indexer_mapping', tmdb_id, _radarr_indexers(radarr), search_control.MAPPING_SECONDS)
+    except media_services.MediaServiceError as error:
+        raise main.service_http_error(error) from error
+    finally:
+        if not prowlarr_task.done():
+            prowlarr_task.cancel()
+        await asyncio.gather(prowlarr_task, return_exceptions=True)  # cleanup only
+
+    public_results: list[dict[str, Any]] = list(releases)
+    allow_low_quality = await asyncio.to_thread(recent_or_current_year_movie, movie)
     for raw in raw_results:
         mapped_indexer = _mapped_radarr_indexer_id(raw, radarr_indexers)
         release = _normalise_prowlarr_release(raw, radarr_indexer_id=mapped_indexer)
@@ -445,7 +451,7 @@ async def search_movie_releases(
         public = _prowlarr_policy(
             release,
             rules,
-            allow_low_quality=recent_or_current_year_movie(movie),
+            allow_low_quality=allow_low_quality,
         )
         public["release_token"] = main.cache_release(tmdb_id, user_id, release)
         public_results.append(public)
@@ -458,7 +464,14 @@ async def search_movie_releases(
         ),
         reverse=True,
     )
-    return radarr_movie, public_results, any(item.get("eligible") for item in public_results)
+    deduplicated = []
+    seen = set()
+    for item in public_results:
+        key = (str(item.get('title') or '').casefold(), str(item.get('indexer') or '').casefold())
+        if key not in seen:
+            seen.add(key)
+            deduplicated.append(item)
+    return radarr_movie, deduplicated, any(item.get("eligible") for item in deduplicated)
 
 
 async def request_movie(

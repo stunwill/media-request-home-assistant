@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from typing import Any, Literal
 
@@ -137,7 +138,8 @@ async def _preset_search_movie_releases(
     *,
     movie: dict[str, Any] | None = None,
 ):
-    return await _original_search_movie_releases(tmdb_id, movie_rules(), user_id, movie=movie)
+    rules = await asyncio.to_thread(movie_rules)
+    return await _original_search_movie_releases(tmdb_id, rules, user_id, movie=movie)
 
 
 async def _preset_request_movie(
@@ -235,7 +237,7 @@ def _preset_tv_release_public(item: dict[str, Any], *, limit_gb: float, scope: L
 
 async def _movie_get_with_language(self: media_services.TmdbClient, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     request_params = dict(params or {})
-    language = load_presets()["discovery"]["original_language"]
+    language = (await asyncio.to_thread(load_presets))["discovery"]["original_language"]
     if language == "en" and path == "/discover/movie":
         request_params.setdefault("with_original_language", "en")
     payload = await catalogue_fixes._original_movie_get(self, path, request_params)

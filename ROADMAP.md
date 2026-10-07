@@ -10,6 +10,16 @@ Status: Feature release in review
 
 # MediaHub Roadmap
 
+## v0.16.15
+
+Status: Corrective release in review
+
+- [x] Trace and test the final deployed Movie release endpoint and composed JavaScript.
+- [x] Bound every discovery stage and the complete endpoint; propagate disconnect cancellation.
+- [x] Preserve partial discovery and preset/identity enforcement.
+- [x] Provide explicit cancellable UI states and stale-response protection.
+- [x] Fix observer feedback and cover The Donut King with behavioural tests.
+
 ## v0.16.14
 
 Status: Corrective release in review

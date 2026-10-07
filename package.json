@@ -1,0 +1,7 @@
+{
+  "name": "mediahub-ui-regressions",
+  "private": true,
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}

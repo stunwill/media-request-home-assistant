@@ -4,6 +4,16 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.15-dev] - 2026-10-08
+
+### Fixed
+
+- Bound the effective Movie release endpoint, including metadata, Radarr, direct Prowlarr fallback, mapping and policy/audit work, to 18 seconds.
+- Replaced the overriding lifecycle search UI with a cancellable 22-second lifecycle, explicit terminal states, Cancel Search, retry and administrator Setup actions.
+- Propagated disconnect cancellation, preserved partial Prowlarr results, reused request metadata and moved file/database work off the event loop.
+- Enforced household Movie rules at the final route boundary and aligned the deployed watchlist entrypoint version.
+- Fixed invalid lifecycle JavaScript and a self-triggering mobile best-match observer; added composed-application behavioural regression coverage.
+
 ## [0.16.14-dev] - 2026-10-08
 
 ### Fixed

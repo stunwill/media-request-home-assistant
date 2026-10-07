@@ -1,5 +1,12 @@
 # MediaHub Home Assistant Changelog
 
+## 0.16.15-dev
+
+- Choose a release now has a complete 18-second server limit and 22-second browser escape hatch.
+- Cancel Search, Back, Close and replacement searches terminate pending requests and reject stale responses.
+- Slow Prowlarr queries preserve successful sibling results, with safe provider diagnostics in add-on logs.
+- Fixed lifecycle script parsing and a repeated mobile observer mutation that could freeze the UI.
+
 ## 0.16.14-dev
 
 - Fixed Movie detail reopening at a stale internal scroll position on mobile.
