@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -108,6 +109,46 @@ class DocumentaryMovieDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(evaluated[1]["eligible"])
         self.assertNotIn("release_token", evaluated[1])
         self.assertEqual(evaluated[1]["primary_rejection"]["category"], "identity")
+
+    async def test_prowlarr_search_runs_movie_and_broad_attempts_concurrently(self) -> None:
+        movie = {
+            "title": "The Donut King",
+            "original_title": "The Donut King",
+            "release_date": "2020-10-30",
+            "year": "2020",
+        }
+        active = 0
+        peak = 0
+
+        class Response:
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self):
+                return []
+
+        async def fake_get(self, path, params=None):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(0.01)
+            active -= 1
+            return Response()
+
+        with (
+            patch.object(main, "load_options", return_value={
+                "integrations": {
+                    "prowlarr_url": "http://prowlarr.test",
+                    "prowlarr_api_key": "test-key",
+                }
+            }),
+            patch("httpx.AsyncClient.get", new=fake_get),
+        ):
+            await runtime._prowlarr_search(movie)
+
+        self.assertEqual(peak, 2)
 
     def test_old_movie_low_quality_fallback_remains_blocked(self) -> None:
         release = {

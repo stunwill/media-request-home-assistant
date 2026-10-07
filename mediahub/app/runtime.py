@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import posixpath
 import re
 from datetime import date
@@ -179,12 +180,28 @@ def _movie_search_terms(movie: dict[str, Any]) -> list[str]:
 
 
 async def _prowlarr_search(movie: dict[str, Any]) -> list[dict[str, Any]]:
+    """Search Prowlarr without allowing a slow tracker/category miss to stall the UI."""
     options = main.load_options()
     integrations = options.get("integrations", {}) if isinstance(options, dict) else {}
     url = str(integrations.get("prowlarr_url") or "").rstrip("/")
     api_key = str(integrations.get("prowlarr_api_key") or "").strip()
     if not url or not api_key:
         return []
+
+    terms = _movie_search_terms(movie)
+    if not terms:
+        return []
+
+    async def fetch(client: httpx.AsyncClient, params: dict[str, Any]):
+        try:
+            response = await client.get("/api/v1/search", params=params)
+            if response.status_code == 400:
+                return False, [], None
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as error:
+            return False, [], error
+        return True, payload if isinstance(payload, list) else [], None
 
     results: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
@@ -194,28 +211,27 @@ async def _prowlarr_search(movie: dict[str, Any]) -> list[dict[str, Any]]:
     try:
         async with httpx.AsyncClient(
             base_url=url,
-            timeout=httpx.Timeout(30),
-            headers={"X-Api-Key": api_key, "User-Agent": "MediaHub/0.6.7"},
+            timeout=httpx.Timeout(12),
+            headers={"X-Api-Key": api_key, "User-Agent": "MediaHub/0.16.7"},
         ) as client:
-            for term in _movie_search_terms(movie):
+            for term in terms:
                 attempts = (
                     {"query": term, "type": "movie", "categories": 2000, "limit": 100},
                     {"query": term, "limit": 100},
                 )
-                for params in attempts:
-                    try:
-                        response = await client.get("/api/v1/search", params=params)
-                        if response.status_code == 400:
-                            continue
-                        response.raise_for_status()
-                        successful_request = True
-                        payload = response.json()
-                    except (httpx.HTTPError, ValueError) as error:
-                        last_error = error
-                        continue
+                try:
+                    responses = await asyncio.wait_for(
+                        asyncio.gather(*(fetch(client, params) for params in attempts)),
+                        timeout=15,
+                    )
+                except TimeoutError as error:
+                    last_error = error
+                    continue
 
-                    if not isinstance(payload, list):
-                        continue
+                for ok, payload, error in responses:
+                    successful_request = successful_request or ok
+                    if error is not None:
+                        last_error = error
                     for item in payload:
                         if not isinstance(item, dict) or not _matches_movie(item.get("title"), movie):
                             continue
@@ -229,8 +245,6 @@ async def _prowlarr_search(movie: dict[str, Any]) -> list[dict[str, Any]]:
                             continue
                         seen.add(key)
                         results.append(item)
-                    if results:
-                        break
                 if results:
                     break
     except (httpx.HTTPError, ValueError) as error:
@@ -239,10 +253,9 @@ async def _prowlarr_search(movie: dict[str, Any]) -> list[dict[str, Any]]:
     if not successful_request and last_error is not None:
         raise HTTPException(
             status_code=502,
-            detail="Prowlarr direct fallback search is unavailable. Check the Prowlarr connection in Setup.",
+            detail="Prowlarr fallback search timed out or is unavailable. Check Prowlarr and the configured indexer in Setup.",
         ) from last_error
     return results
-
 
 async def _radarr_indexers(radarr: Any) -> list[dict[str, Any]]:
     try:
