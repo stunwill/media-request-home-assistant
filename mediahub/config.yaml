@@ -1,5 +1,5 @@
 name: MediaHub
-version: "0.16.16"
+version: "0.16.17"
 slug: mediahub
 description: Family-friendly movie and TV request management for Home Assistant
 url: https://github.com/stunwill/media-request-home-assistant
