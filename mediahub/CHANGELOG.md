@@ -1,3 +1,9 @@
+## 0.16.17
+
+- Fixed Download losing a valid release discovered directly through Prowlarr/IPTorrents.
+- Keep the selected torrent identity and recheck household rules before sending it to Radarr, without a second discovery pass.
+- Bound and confirm Radarr submission while preserving request, storage and download tracking.
+
 ## 0.16.16
 - Correct mobile Choose a release scrolling so the release-search/results area is brought into view and remains anchored when results render.
 

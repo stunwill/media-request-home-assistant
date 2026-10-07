@@ -416,7 +416,7 @@ class RadarrClient:
                 response.raise_for_status()
                 return response.json() if response.content else {}
         except httpx.TimeoutException as error:
-            raise MediaServiceError("Radarr request timed out") from error
+            raise MediaServiceError("Radarr request timed out", status_code=504) from error
         except httpx.HTTPStatusError as error:
             code = error.response.status_code
             if code in {401, 403}:
@@ -501,13 +501,51 @@ class RadarrClient:
         releases = payload if isinstance(payload, list) else []
         return [self.normalise_release(item) for item in releases if isinstance(item, dict)]
 
-    async def grab(self, *, guid: str, indexer_id: int) -> dict[str, Any]:
-        payload = await self._request(
-            "POST",
-            "/api/v3/release",
-            json={"guid": guid, "indexerId": indexer_id},
-        )
-        return payload if isinstance(payload, dict) else {}
+    async def grab(
+        self, *, guid: str, indexer_id: int, release: dict[str, Any] | None = None,
+        tmdb_id: int = 0, movie_id: int = 0,
+    ) -> dict[str, Any]:
+        if release is None:
+            payload = await self._request(
+                "POST", "/api/v3/release", json={"guid": guid, "indexerId": indexer_id})
+            return payload if isinstance(payload, dict) else {}
+
+        # POST /release only works with Radarr's own cached searches. External
+        # results use /release/push, preserving the authoritative download link.
+        # Radarr itself parses and evaluates the pushed release against its rules.
+        if release.get("source") != "prowlarr_direct" or not tmdb_id or not movie_id:
+            raise MediaServiceError("Invalid direct Prowlarr submission", status_code=409)
+        download_url = str(release.get("download_url") or "")
+        magnet_url = str(release.get("magnet_url") or "")
+        if not (download_url or magnet_url) or not release.get("publish_date"):
+            raise MediaServiceError("Prowlarr selection lacks download metadata. Search again.", status_code=409)
+        if release.get("protocol") != "torrent":
+            raise MediaServiceError("This direct release is not a supported torrent", status_code=422)
+        before = await self._request("GET", "/api/v3/history/movie", params={"movieId": movie_id})
+        known_ids = {item.get("id") for item in before if isinstance(item, dict)}
+        pushed = await self._request("POST", "/api/v3/release/push", json={
+            "guid": guid, "indexerId": indexer_id, "title": release["title"],
+            "size": release["size_bytes"], "seeders": release.get("seeders"),
+            "infoHash": release.get("info_hash") or None, "downloadUrl": download_url,
+            "magnetUrl": magnet_url, "publishDate": release["publish_date"],
+            "protocol": "torrent", "tmdbId": tmdb_id,
+        })
+        decisions = pushed if isinstance(pushed, list) else []
+        decision = next((item for item in decisions if isinstance(item, dict)
+                         and item.get("mappedMovieId") == movie_id), None)
+        if decision is None or decision.get("rejected") or not decision.get("approved"):
+            raise MediaServiceError("Radarr rejected the selected Prowlarr release. Check its quality profile and download configuration.", status_code=422)
+        # A push HTTP 200 is a decision, not proof of a successful grab. Radarr can
+        # swallow download-client failures. Require a new exact grabbed event.
+        history = await self._request("GET", "/api/v3/history/movie", params={"movieId": movie_id})
+        pushed_guid = "PUSH-" + download_url
+        grabbed = next((item for item in history if isinstance(item, dict)
+                        and item.get("id") not in known_ids and item.get("movieId") == movie_id
+                        and item.get("eventType") == "grabbed"
+                        and ((item.get("data") or {}).get("guid") or (item.get("data") or {}).get("Guid")) == pushed_guid), None)
+        if grabbed is None:
+            raise MediaServiceError("Radarr has not confirmed the selected release was grabbed. Check Radarr Downloads before retrying.")
+        return {"infoHash": grabbed.get("downloadId") or release.get("info_hash")}
 
     async def queue(self) -> list[dict[str, Any]]:
         payload = await self._request(

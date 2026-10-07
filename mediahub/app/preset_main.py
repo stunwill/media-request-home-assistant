@@ -147,7 +147,7 @@ async def _preset_request_movie(
     payload: main.MovieRequestCreate,
     principal: main.CurrentUser,
 ) -> dict[str, Any]:
-    rules = movie_rules()
+    rules = await asyncio.to_thread(movie_rules)
     safe_payload = payload.model_copy(update={
         "maximum_size_gb": rules.maximum_size_gb,
         "minimum_seeders": rules.minimum_seeders,

@@ -21,10 +21,6 @@ _original_analyse_download_workflow = media_services.analyse_download_workflow
 _original_search_movie_releases = enhanced_main.search_movie_releases
 _original_request_movie = enhanced_main.request_movie
 
-# An interactive Prowlarr fallback selection is converted into the existing automatic
-# request path so the established storage, duplicate, audit and Radarr lifecycle logic
-# remains authoritative. The value is (Prowlarr GUID, Prowlarr indexer ID).
-_selected_prowlarr_release: dict[tuple[int, str], tuple[str, int]] = {}
 
 
 def analyse_download_workflow(
@@ -311,6 +307,9 @@ def _normalise_prowlarr_release(
         "rejections": [],
         "flags": item.get("indexerFlags") or [],
         "info_hash": str(item.get("infoHash") or ""),
+        "download_url": str(item.get("downloadUrl") or ""),
+        "magnet_url": str(item.get("magnetUrl") or ""),
+        "protocol": str(item.get("protocol") or "torrent").lower(),
     }
 
 
@@ -367,6 +366,8 @@ def _prowlarr_policy(
     result["search_source"] = "prowlarr_direct"
     result.pop("guid", None)
     result.pop("info_hash", None)
+    result.pop("download_url", None)
+    result.pop("magnet_url", None)
     return result
 
 
@@ -386,8 +387,6 @@ async def _search_movie_releases(
     movie: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], bool]:
     """Run independent discovery concurrently; retain safe fallback after slow Radarr."""
-    selection_key = (tmdb_id, user_id)
-    preferred = _selected_prowlarr_release.get(selection_key)
 
     if movie is None:
         tmdb, _, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
@@ -402,28 +401,24 @@ async def _search_movie_releases(
     fallback_active = False
     prowlarr_task = asyncio.create_task(_prowlarr_search(movie))
     try:
-        if preferred is None:
-            try:
-                radarr_movie, releases, fallback_active = await search_control.stage(
-                    'radarr_discovery', tmdb_id,
-                    _original_search_movie_releases(tmdb_id, rules, user_id, movie=movie))
-            except (TimeoutError, HTTPException) as error:
-                if isinstance(error, HTTPException) and "timed out" not in str(error.detail).lower():
-                    raise
-                # A slow interactive search must not discard independent Prowlarr
-                # results. Re-read/ensure the movie under a separate short budget.
-                radarr_movie = await search_control.stage('radarr_ensure', tmdb_id, radarr.ensure_movie(tmdb_id), 3)
-                releases = []
-            if any(item.get("eligible") for item in releases):
-                # Already-completed configuration failures remain visible.
-                if prowlarr_task.done() and not prowlarr_task.cancelled():
-                    error = prowlarr_task.exception()
-                    if isinstance(error, HTTPException) and error.status_code == 503:
-                        raise error
-                return radarr_movie, releases, fallback_active
-        else:
+        try:
+            radarr_movie, releases, fallback_active = await search_control.stage(
+                'radarr_discovery', tmdb_id,
+                _original_search_movie_releases(tmdb_id, rules, user_id, movie=movie))
+        except (TimeoutError, HTTPException) as error:
+            if isinstance(error, HTTPException) and "timed out" not in str(error.detail).lower():
+                raise
+            # A slow interactive search must not discard independent Prowlarr
+            # results. Re-read/ensure the movie under a separate short budget.
             radarr_movie = await search_control.stage('radarr_ensure', tmdb_id, radarr.ensure_movie(tmdb_id), 3)
-
+            releases = []
+        if any(item.get("eligible") for item in releases):
+            # Already-completed configuration failures remain visible.
+            if prowlarr_task.done() and not prowlarr_task.cancelled():
+                error = prowlarr_task.exception()
+                if isinstance(error, HTTPException) and error.status_code == 503:
+                    raise error
+            return radarr_movie, releases, fallback_active
         raw_results = await prowlarr_task
         if not raw_results:
             return radarr_movie, releases, fallback_active
@@ -437,16 +432,10 @@ async def _search_movie_releases(
         await asyncio.gather(prowlarr_task, return_exceptions=True)  # cleanup only
 
     public_results: list[dict[str, Any]] = list(releases)
-    allow_low_quality = await asyncio.to_thread(recent_or_current_year_movie, movie)
+    allow_low_quality = await asyncio.to_thread(enhanced_main.is_recent_movie, movie)
     for raw in raw_results:
         mapped_indexer = _mapped_radarr_indexer_id(raw, radarr_indexers)
         release = _normalise_prowlarr_release(raw, radarr_indexer_id=mapped_indexer)
-
-        if preferred is not None and (
-            str(release.get("guid") or "") != preferred[0]
-            or int(release.get("prowlarr_indexer_id") or 0) != preferred[1]
-        ):
-            continue
 
         public = _prowlarr_policy(
             release,
@@ -474,38 +463,45 @@ async def _search_movie_releases(
     return radarr_movie, deduplicated, any(item.get("eligible") for item in deduplicated)
 
 
-async def request_movie(
-    tmdb_id: int,
-    payload: main.MovieRequestCreate,
-    principal: main.CurrentUser,
-) -> dict[str, Any]:
-    """Preserve the exact interactive Prowlarr choice while reusing the proven request flow."""
-    token = str(payload.release_token or "")
-    if not token:
-        return await _original_request_movie(tmdb_id, payload, principal)
+HANDOFF_SECONDS = 18
+GRAB_SECONDS = 6
 
-    cached = main.release_cache.get(token)
-    if (
-        cached is None
-        or cached[0] <= monotonic()
-        or cached[1] != tmdb_id
-        or cached[2] != principal.user_id
-        or str(cached[3].get("source") or "") != "prowlarr_direct"
-    ):
-        return await _original_request_movie(tmdb_id, payload, principal)
 
-    selected = main.cached_release(token, tmdb_id, principal.user_id)
-    preferred = (
-        str(selected.get("guid") or ""),
-        int(selected.get("prowlarr_indexer_id") or 0),
-    )
-    selection_key = (tmdb_id, principal.user_id)
-    _selected_prowlarr_release[selection_key] = preferred
+async def validate_direct_selection(selected, rules, movie, radarr):
+    """Revalidate the authoritative token without re-discovering the torrent."""
+    from . import release_identity
+
+    if release_identity.validate_movie_release(movie, selected).state == "rejected":
+        raise HTTPException(status_code=409, detail="Selected release does not match this movie. Search again.")
+    indexers = await search_control.stage(
+        "handoff_mapping", movie["tmdb_id"], _radarr_indexers(radarr), search_control.MAPPING_SECONDS)
+    mapped = int(selected.get("indexer_id") or 0)
+    live = next((item for item in indexers if int(item.get("id") or 0) == mapped), None)
+    name = str(selected.get("indexer") or "").casefold().strip()
+    live_name = str((live or {}).get("name") or "").casefold().strip()
+    if not mapped or not live or not name or not live_name or not (
+        name == live_name or name in live_name or live_name in name
+    ) or not int(selected.get("prowlarr_indexer_id") or 0):
+        raise HTTPException(status_code=409, detail="Selected Prowlarr indexer is no longer mapped to Radarr. Check Setup and search again.")
+    allow_low_quality = await asyncio.to_thread(enhanced_main.is_recent_movie, movie)
+    public = _prowlarr_policy(selected, rules, allow_low_quality=allow_low_quality)
+    if not public["eligible"]:
+        raise HTTPException(status_code=422, detail={
+            "message": "The selected release no longer meets the household download rules.",
+            "rejections": public["policy_rejections"],
+        })
+    if not selected.get("download_url") and not selected.get("magnet_url"):
+        raise HTTPException(status_code=409, detail="Prowlarr did not supply a download link for this selection. Search again.")
+    return public
+
+
+async def request_movie(tmdb_id: int, payload: main.MovieRequestCreate, principal: main.CurrentUser):
     try:
-        automatic_payload = payload.model_copy(update={"release_token": None})
-        return await _original_request_movie(tmdb_id, automatic_payload, principal)
-    finally:
-        _selected_prowlarr_release.pop(selection_key, None)
+        return await _original_request_movie(tmdb_id, payload, principal)
+    except media_services.MediaServiceError as error:
+        raise main.service_http_error(error) from error
+    except TimeoutError as error:
+        raise HTTPException(status_code=504, detail="Radarr release submission timed out. Check Downloads before trying again.") from error
 
 
 # Keep the public modules consistent. Existing FastAPI route functions resolve these
@@ -524,6 +520,5 @@ for route in app.routes:
         route.endpoint = enhanced_main.movie_releases
         route.dependant.call = enhanced_main.movie_releases
 
-# The request endpoint itself holds a release token branch, so replace only that route
-# to translate direct-Prowlarr selections into the existing automatic request path.
+# Bound the shared request lifecycle; retain the exact cached selection throughout.
 enhanced_main._replace_route("/api/movies/{tmdb_id}/request", "POST", request_movie)

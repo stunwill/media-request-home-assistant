@@ -467,7 +467,7 @@ def cache_release(tmdb_id: int, user_id: str, release: dict) -> str:
 
 
 def cached_release(token: str, tmdb_id: int, user_id: str) -> dict:
-    cached = release_cache.pop(token, None)
+    cached = release_cache.get(token)
     if (
         cached is None
         or cached[0] <= monotonic()
@@ -478,6 +478,7 @@ def cached_release(token: str, tmdb_id: int, user_id: str) -> dict:
             status_code=409,
             detail="This release selection expired. Search for releases again.",
         )
+    release_cache.pop(token, None)
     return cached[3]
 
 

@@ -1,3 +1,13 @@
+## v0.16.17
+
+Status: Corrective release in review
+
+- [x] Preserve direct Prowlarr selection tokens through the effective request route.
+- [x] Use the supported Radarr external-release handoff and confirm the exact grab.
+- [x] Revalidate current presets/mapping and preserve shared request bookkeeping.
+- [x] Cover success, invalid selection, policy changes, failures, timeout and cancellation behaviour.
+- [x] Publish consistent application and Home Assistant add-on versions.
+
 ## v0.16.0
 
 ## v0.16.16

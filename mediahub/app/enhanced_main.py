@@ -324,14 +324,23 @@ async def request_movie(
     payload: main.MovieRequestCreate,
     principal: main.CurrentUser,
 ) -> dict[str, Any]:
-    tmdb, radarr, _ = main.configured_clients(main.load_options())
+    from . import runtime
+
+    # Validate ownership/expiry before contacting any integration.
+    selected_token = (main.cached_release(payload.release_token, tmdb_id, principal.user_id)
+                      if payload.release_token else None)
+    tmdb, radarr, _ = main.configured_clients(await asyncio.to_thread(main.load_options))
+    radarr.timeout = httpx.Timeout(6, connect=3, pool=3)
     try:
-        movie = await tmdb.details(tmdb_id)
+        movie = await search_control.movie_metadata(tmdb, tmdb_id)
+        movie = {**movie, "tmdb_id": tmdb_id}
     except MediaServiceError as error:
         raise main.service_http_error(error) from error
 
-    with main.connect_db() as db:
-        duplicate = _request_duplicate(db, tmdb_id)
+    def find_duplicate():
+        with main.connect_db() as db:
+            return _request_duplicate(db, tmdb_id)
+    duplicate = await asyncio.to_thread(find_duplicate)
     if duplicate:
         raise HTTPException(
             status_code=409,
@@ -339,7 +348,7 @@ async def request_movie(
         )
 
     try:
-        radarr_duplicate = await _radarr_duplicate(radarr, tmdb_id)
+        radarr_duplicate = await search_control.stage("handoff_duplicate", tmdb_id, _radarr_duplicate(radarr, tmdb_id))
     except MediaServiceError as error:
         raise main.service_http_error(error) from error
     if radarr_duplicate:
@@ -356,51 +365,57 @@ async def request_movie(
     fallback_active = False
 
     if payload.release_token:
-        selected = main.cached_release(payload.release_token, tmdb_id, principal.user_id)
-        strict = main.release_with_policy(selected, payload)
-        selected_public = strict
-        if not strict["eligible"] and is_recent_movie(movie):
-            selected_public = recent_fallback_policy(selected, payload)
-            fallback_active = bool(selected_public["eligible"])
-        if not selected_public["eligible"]:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "message": "The selected release does not meet the download rules.",
-                    "rejections": selected_public["policy_rejections"],
-                },
+        selected = selected_token
+        if selected.get("source") == "prowlarr_direct":
+            selected_public = await runtime.validate_direct_selection(selected, payload, movie, radarr)
+            fallback_active = bool(selected_public.get("recent_quality_fallback"))
+            radarr_movie = await search_control.stage("handoff_ensure", tmdb_id, radarr.ensure_movie(tmdb_id))
+        else:
+            strict = main.release_with_policy(selected, payload)
+            selected_public = strict
+            if not strict["eligible"] and is_recent_movie(movie):
+                selected_public = recent_fallback_policy(selected, payload)
+                fallback_active = bool(selected_public["eligible"])
+            if not selected_public["eligible"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "The selected release does not meet the download rules.",
+                        "rejections": selected_public["policy_rejections"],
+                    },
+                )
+            try:
+                radarr_movie = await radarr.ensure_movie(tmdb_id)
+                fresh_releases = await radarr.releases(int(radarr_movie["id"]))
+            except MediaServiceError as error:
+                raise main.service_http_error(error) from error
+            selected = next(
+                (
+                    item
+                    for item in fresh_releases
+                    if item["guid"] == selected["guid"]
+                    and item["indexer_id"] == selected["indexer_id"]
+                ),
+                None,
             )
-        try:
-            radarr_movie = await radarr.ensure_movie(tmdb_id)
-            fresh_releases = await radarr.releases(int(radarr_movie["id"]))
-        except MediaServiceError as error:
-            raise main.service_http_error(error) from error
-        selected = next(
-            (
-                item
-                for item in fresh_releases
-                if item["guid"] == selected["guid"]
-                and item["indexer_id"] == selected["indexer_id"]
-            ),
-            None,
-        )
-        if selected is None:
-            raise HTTPException(
-                status_code=409,
-                detail="The selected release is no longer available. Search again.",
-            )
-        selected_public = main.release_with_policy(selected, payload)
-        if not selected_public["eligible"] and is_recent_movie(movie):
-            selected_public = recent_fallback_policy(selected, payload)
-            fallback_active = bool(selected_public["eligible"])
-        if not selected_public["eligible"]:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "message": "The selected release no longer meets the download rules.",
-                    "rejections": selected_public["policy_rejections"],
-                },
-            )
+            if selected is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="The selected release is no longer available. Search again.",
+                )
+            selected_public = main.release_with_policy(selected, payload)
+            if not selected_public["eligible"] and is_recent_movie(movie):
+                selected_public = recent_fallback_policy(selected, payload)
+                fallback_active = bool(selected_public["eligible"])
+            if not selected_public["eligible"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "The selected release no longer meets the download rules.",
+                        "rejections": selected_public["policy_rejections"],
+                    },
+                )
+
     else:
         radarr_movie, releases, fallback_active = await search_movie_releases(
             tmdb_id,
@@ -423,88 +438,15 @@ async def request_movie(
             detail="No release currently meets the selected quality, size, seeder, and Radarr rules.",
         )
 
-    estimated_size_gb = max(float(selected["size_gb"]), 0.01)
-    with main.connect_db() as db:
-        # Re-check inside the write transaction to close the ordinary double-click race.
-        duplicate = _request_duplicate(db, tmdb_id)
-        if duplicate:
-            raise HTTPException(
-                status_code=409,
-                detail={"message": "This movie is already requested or available.", **duplicate},
-            )
-        storage = main.storage_snapshot(db, estimated_size_gb)
-        now = main.utc_now()
-        status = "searching" if storage["accepted"] else "rejected"
-        rejection_reason = None if storage["accepted"] else "insufficient_storage"
-        try:
-            cursor = db.execute(
-                """
-                INSERT INTO requests (
-                    media_type, title, external_id, requested_by_id, requested_by_name,
-                    estimated_size_gb, reserved_size_gb, status, rejection_reason,
-                    radarr_movie_id, selected_release_guid, selected_release_title,
-                    download_id, progress, status_message, created_at, updated_at
-                ) VALUES ('movie', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-                """,
-                (
-                    movie["title"],
-                    str(tmdb_id),
-                    principal.user_id,
-                    principal.display_name,
-                    estimated_size_gb,
-                    storage["request_reservation_gb"] if storage["accepted"] else 0,
-                    status,
-                    rejection_reason,
-                    int(radarr_movie["id"]),
-                    selected["guid"],
-                    selected["title"],
-                    selected.get("info_hash") or None,
-                    "Submitting release to Radarr" if storage["accepted"] else "Insufficient storage",
-                    now,
-                    now,
-                ),
-            )
-        except Exception as error:
-            if "idx_requests_one_active_movie" in str(error) or "UNIQUE constraint failed" in str(error):
-                raise HTTPException(
-                    status_code=409,
-                    detail="This movie was requested by another request at the same time.",
-                ) from error
-            raise
-        request_id = int(cursor.lastrowid)
-        main.record_audit(
-            db,
-            actor_id=principal.user_id,
-            actor_name=principal.display_name,
-            action="movie_request_created",
-            request_id=request_id,
-            details={
-                "tmdb_id": tmdb_id,
-                "title": movie["title"],
-                "recent_quality_fallback": fallback_active,
-                "release": {
-                    "indexer": selected["indexer"],
-                    "title": selected["title"],
-                    "size_gb": selected["size_gb"],
-                    "quality": selected["quality"],
-                },
-                "storage": storage,
-            },
-        )
-        db.commit()
+    if selected.get("source") == "prowlarr_direct" and not payload.release_token:
+        selected_public = await runtime.validate_direct_selection(selected, payload, movie, radarr)
+        fallback_active = bool(selected_public.get("recent_quality_fallback"))
 
-    if not storage["accepted"]:
-        with main.connect_db() as db:
-            rejected_request = main.request_row(db, request_id)
-        return {"request": main.public_request(rejected_request), "storage": storage}
-
-    try:
-        grabbed = await radarr.grab(guid=selected["guid"], indexer_id=selected["indexer_id"])
-    except MediaServiceError as error:
+    def fail_record(request_id, message):
         with main.connect_db() as db:
             db.execute(
                 "UPDATE requests SET status = 'failed', reserved_size_gb = 0, status_message = ?, updated_at = ? WHERE id = ?",
-                (str(error), main.utc_now(), request_id),
+                (message, main.utc_now(), request_id),
             )
             main.record_audit(
                 db,
@@ -512,41 +454,154 @@ async def request_movie(
                 actor_name="MediaHub",
                 action="movie_request_submission_failed",
                 request_id=request_id,
-                details={"message": str(error)},
+                details={"message": message},
             )
             db.commit()
-        raise main.service_http_error(error) from error
+
+    estimated_size_gb = max(float(selected["size_gb"]), 0.01)
+    def create_record():
+        with main.connect_db() as db:
+            # Re-check inside the write transaction to close the ordinary double-click race.
+            duplicate = _request_duplicate(db, tmdb_id)
+            if duplicate:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"message": "This movie is already requested or available.", **duplicate},
+                )
+            storage = main.storage_snapshot(db, estimated_size_gb)
+            now = main.utc_now()
+            status = "searching" if storage["accepted"] else "rejected"
+            rejection_reason = None if storage["accepted"] else "insufficient_storage"
+            try:
+                cursor = db.execute(
+                    """
+                    INSERT INTO requests (
+                        media_type, title, external_id, requested_by_id, requested_by_name,
+                        estimated_size_gb, reserved_size_gb, status, rejection_reason,
+                        radarr_movie_id, selected_release_guid, selected_release_title,
+                        download_id, progress, status_message, created_at, updated_at
+                    ) VALUES ('movie', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+                    """,
+                    (
+                        movie["title"],
+                        str(tmdb_id),
+                        principal.user_id,
+                        principal.display_name,
+                        estimated_size_gb,
+                        storage["request_reservation_gb"] if storage["accepted"] else 0,
+                        status,
+                        rejection_reason,
+                        int(radarr_movie["id"]),
+                        selected["guid"],
+                        selected["title"],
+                        selected.get("info_hash") or None,
+                        "Submitting release to Radarr" if storage["accepted"] else "Insufficient storage",
+                        now,
+                        now,
+                    ),
+                )
+            except Exception as error:
+                if "idx_requests_one_active_movie" in str(error) or "UNIQUE constraint failed" in str(error):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This movie was requested by another request at the same time.",
+                    ) from error
+                raise
+            request_id = int(cursor.lastrowid)
+            main.record_audit(
+                db,
+                actor_id=principal.user_id,
+                actor_name=principal.display_name,
+                action="movie_request_created",
+                request_id=request_id,
+                details={
+                    "tmdb_id": tmdb_id,
+                    "title": movie["title"],
+                    "recent_quality_fallback": fallback_active,
+                    "release_source": selected.get("source", "radarr"),
+                    "radarr_indexer_id": selected["indexer_id"],
+                    "prowlarr_indexer_id": selected.get("prowlarr_indexer_id"),
+                    "release": {
+                        "indexer": selected["indexer"],
+                        "title": selected["title"],
+                        "size_gb": selected["size_gb"],
+                        "quality": selected["quality"],
+                    },
+                    "storage": storage,
+                },
+            )
+            db.commit()
+        return request_id, storage
+    creation = asyncio.create_task(asyncio.to_thread(create_record))
+    try:
+        request_id, storage = await asyncio.shield(creation)
+    except asyncio.CancelledError:
+        # Threads cannot be cancelled. Drain the write and release any reservation
+        # it committed before propagating cancellation; never abandon a searching row.
+        request_id, storage = await creation
+        if storage["accepted"]:
+            await asyncio.to_thread(fail_record, request_id, "Submission cancelled before Radarr grab")
+        raise
+
+    if not storage["accepted"]:
+        def rejected_record():
+            with main.connect_db() as db:
+                return {"request": main.public_request(main.request_row(db, request_id)), "storage": storage}
+        return await asyncio.to_thread(rejected_record)
+
+    try:
+        grab_options = {"guid": selected["guid"], "indexer_id": selected["indexer_id"]}
+        if selected.get("source") == "prowlarr_direct":
+            grab_options.update(release=selected, tmdb_id=tmdb_id, movie_id=int(radarr_movie["id"]))
+        grabbed = await search_control.stage(
+            "radarr_grab", tmdb_id, radarr.grab(**grab_options), runtime.GRAB_SECONDS)
+    except (Exception, asyncio.CancelledError) as error:
+        message = (str(error) if isinstance(error, MediaServiceError) else
+                   "Radarr submission cancelled; check Downloads before retrying" if isinstance(error, asyncio.CancelledError) else
+                   "Radarr submission timed out; check Downloads before retrying" if isinstance(error, TimeoutError) else
+                   "Radarr submission failed; check Downloads before retrying")
+        await asyncio.to_thread(fail_record, request_id, message)
+        if isinstance(error, MediaServiceError):
+            raise main.service_http_error(error) from error
+        raise
 
     download_id = str(grabbed.get("infoHash") or selected.get("info_hash") or "") or None
-    with main.connect_db() as db:
-        db.execute(
-            """
-            UPDATE requests
-            SET status = 'queued', download_id = ?, status_message = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (download_id, "Release sent to Radarr", main.utc_now(), request_id),
-        )
-        main.record_audit(
-            db,
-            actor_id="system",
-            actor_name="MediaHub",
-            action="movie_release_grabbed",
-            request_id=request_id,
-            details={
-                "indexer": selected["indexer"],
-                "quality": selected["quality"],
-                "recent_quality_fallback": fallback_active,
-            },
-        )
-        db.commit()
-        result = main.request_row(db, request_id)
-    return {
-        "request": main.public_request(result),
-        "release": selected_public or main.release_with_policy(selected, payload),
-        "storage": storage,
-    }
-
+    def queued_record():
+        with main.connect_db() as db:
+            db.execute(
+                """
+                UPDATE requests
+                SET status = 'queued', download_id = ?, status_message = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (download_id, "Release sent to Radarr", main.utc_now(), request_id),
+            )
+            main.record_audit(
+                db,
+                actor_id="system",
+                actor_name="MediaHub",
+                action="movie_release_grabbed",
+                request_id=request_id,
+                details={
+                    "indexer": selected["indexer"],
+                    "quality": selected["quality"],
+                    "recent_quality_fallback": fallback_active,
+                },
+            )
+            db.commit()
+            result = main.request_row(db, request_id)
+        return {
+            "request": main.public_request(result),
+            "release": selected_public or main.release_with_policy(selected, payload),
+            "storage": storage,
+        }
+    completion = asyncio.create_task(asyncio.to_thread(queued_record))
+    try:
+        return await asyncio.shield(completion)
+    except asyncio.CancelledError:
+        # The remote grab is confirmed: persist queued state even if the client left.
+        await completion
+        raise
 
 async def downloads(principal: main.CurrentUser) -> list[dict[str, Any]]:
     _, radarr, qbittorrent = main.configured_clients(main.load_options())
