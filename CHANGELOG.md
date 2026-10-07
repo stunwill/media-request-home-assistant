@@ -4,6 +4,14 @@ All notable MediaHub changes are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.11-dev] - 2026-10-07
+
+### Fixed
+
+- Fixed the MediaHub mobile UI becoming non-interactive after startup.
+- Corrected an invalid literal escaped newline in the generated browser JavaScript from the release-search cancellation change.
+- Restored catalogue loading and navigation while retaining cancellable Choose a Release behaviour.
+
 ## [0.16.10-dev] - 2026-10-07
 
 ### Fixed
