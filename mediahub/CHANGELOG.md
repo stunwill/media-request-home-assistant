@@ -1,3 +1,6 @@
+## 0.16.16
+- Correct mobile Choose a release scrolling so the release-search/results area is brought into view and remains anchored when results render.
+
 # MediaHub Home Assistant Changelog
 
 ## 0.16.15

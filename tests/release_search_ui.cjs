@@ -10,13 +10,14 @@ let timerId = 100000, requests = 0;
 const movie = {tmdb_id:653574,title:'The Donut King',original_title:'The Donut King',year:'2020',rating:7,
   release_date:'2020-10-30',genres:[],cast:[],overview:'Documentary',context:'browse',lifecycle:{state:'released_unknown'},lifecycle_message:{},library:{}};
 const release = {title:'The Donut King 2020 1080p WEBRip',quality:'1080p',indexer:'IPTorrents',size_gb:1.53,seeders:169,eligible:true,release_token:'opaque',flags:[],policy_rejections:[]};
-let win;
+let win, releaseScrolls=0;
 const dom = new JSDOM(html, {url:'https://ha.test/api/hassio_ingress/test-token/', runScripts:'dangerously', pretendToBeVisual:true, virtualConsole:vc,
   beforeParse(w) {
     win=w;const Observer=w.MutationObserver;w.MutationObserver=class extends Observer{constructor(fn){super(fn);observers.push(this);}};w.IntersectionObserver=class{observe(){} unobserve(){} disconnect(){}};w.Headers=Headers;w.AbortController=AbortController;
     w.matchMedia=()=>({matches:true,addEventListener(){},removeEventListener(){}});
     w.scrollTo=()=>{};
     w.HTMLElement.prototype.scrollIntoView=function(){};
+    w.HTMLElement.prototype.scrollTo=function(options){if(this.classList?.contains('dialog')){this.scrollTop=Number(options?.top||0);releaseScrolls++;}};
     const set=w.setTimeout.bind(w), clear=w.clearTimeout.bind(w);
     w.setTimeout=(fn,ms,...args)=>{if(ms===22000){const id=timerId++;deadlines.set(id,fn);return id;}return set(fn,ms,...args);};
     w.clearTimeout=id=>{if(deadlines.has(id))deadlines.delete(id);else clear(id);};
@@ -47,15 +48,15 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const evaluate=source=>win.eval(source);
 const q=id=>win.document.getElementById(id);
 async function open(id=653574){await evaluate(`openMovie(${id})`);await wait(25);assert(q('choose-release'));}
-function start(){const promise=evaluate('findReleases(false)');assert.equal(q('release-area').dataset.searchState,'SEARCHING');assert(q('cancel-release-search'));return {promise,request:pending.at(-1),area:q('release-area')};}
+function start(){const before=releaseScrolls,promise=evaluate('findReleases(false)');assert.equal(q('release-area').dataset.searchState,'SEARCHING');assert(q('cancel-release-search'));return {promise,request:pending.at(-1),area:q('release-area'),beforeScrolls:before};}
 function terminal(area,status){assert.equal(area.dataset.searchState,status);assert.equal(area.getAttribute('aria-busy'),'false');assert(!area.textContent.includes('Searching Radarr'));}
 (async()=>{
   await wait(30);
   await open();
   // Successful results and observer settling: a self-mutating observer would
   // starve this timer and CI's subprocess timeout would fail the test.
-  let job=start();job.request.resolve({releases:[release],search_message:'1 qualifying release found.'});await job.promise;await wait(30);
-  terminal(job.area,'SUCCESS');assert.equal(job.area.querySelectorAll('.best-badge').length,1);
+  let job=start();await wait(5);assert(releaseScrolls>job.beforeScrolls,'Choose a release must scroll the dialog to the release area');const resultScrolls=releaseScrolls;job.request.resolve({releases:[release],search_message:'1 qualifying release found.'});await job.promise;await wait(30);
+  assert(releaseScrolls>resultScrolls,'Rendered release results must remain anchored in the release area');terminal(job.area,'SUCCESS');assert.equal(job.area.querySelectorAll('.best-badge').length,1);
   const observer=new win.MutationObserver(list=>{changes+=list.length;});let changes=0;observer.observe(job.area,{subtree:true,childList:true});await wait(40);assert.equal(changes,0);observer.disconnect();assert.equal(deadlines.size,0);
   // Zero releases.
   job=start();job.request.resolve({releases:[],search_message:'No matching releases.'});await job.promise;terminal(job.area,'NO_RESULTS');
@@ -64,7 +65,7 @@ function terminal(area,status){assert.equal(area.dataset.searchState,status);ass
   job.request.resolve({releases:[release]});await wait(10);terminal(job.area,'TIMED_OUT');
   // Visible Cancel, Back, Close, navigation, page departure.
   for(const action of ['cancel','back','close','navigation','pagehide']){
-    await open();job=start();job.area.closest('.dialog').scrollTop=123;assert.equal(job.area.closest('.dialog').scrollTop,123);
+    await open();job=start();await wait(5);assert(releaseScrolls>job.beforeScrolls);
     if(action==='cancel')q('cancel-release-search').click();
     if(action==='back')q('mobile-modal-back').click();
     if(action==='close')q('close-modal').click();

@@ -1,3 +1,9 @@
+## [0.16.16] - 2026-10-08
+
+### Fixed
+- On mobile, Choose a release now scrolls the movie-detail dialog directly to the release-search area after it is rendered.
+- Release results remain anchored at the release area when the searching state is replaced, including Search again.
+
 # Changelog
 
 All notable MediaHub changes are documented in this file.

@@ -1,5 +1,12 @@
 ## v0.16.0
 
+## v0.16.16
+
+Status: Corrective release in review
+
+- Mobile Choose a release scrolls directly to the release-search area and keeps returned results anchored in view.
+
+
 Status: Feature release in review
 
 ### Features
