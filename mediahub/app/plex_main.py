@@ -10,6 +10,7 @@ app = plex_integration.app
 
 PlexIntegrationField = Literal[
     "tmdb_api_key",
+    "omdb_api_key",
     "prowlarr_url",
     "prowlarr_api_key",
     "radarr_url",
@@ -32,6 +33,7 @@ PlexIntegrationField = Literal[
 ]
 PlexSecretField = Literal[
     "tmdb_api_key",
+    "omdb_api_key",
     "prowlarr_api_key",
     "radarr_api_key",
     "sonarr_api_key",

@@ -16,7 +16,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-MediaHub is in active development. The current development version is `0.14.2-dev`, focused on **Download Presets & Release UX Corrections**. This corrective release restores the administrator Download Presets UI in the deployed Home Assistant entrypoint, removes the competing standalone TV policy UI, makes Movie and TV household policy one source of truth, distinguishes MediaHub policy from Radarr/Sonarr decisions, and corrects Browse release-selection context metadata.
+The current release in review is `0.17.0`, based on `0.16.17`. It adds compact header/detail navigation, automatic release discovery, optional OMDb Rotten Tomatoes critic scores and a paginated Downloads history table. Rotten Tomatoes filters explicitly cover verified cached catalogue/search titles rather than the full TMDB catalogue. See [release notes and acceptance checklist](docs/MOBILE_DISCOVERY_HISTORY.md).
 
 ## Release and policy architecture
 

@@ -14,13 +14,13 @@ OPTIONS_FILE = APP_DATA / "options.json"
 SETTINGS_FILE = APP_DATA / "mediahub-settings.json"
 
 INTEGRATION_FIELDS = {
-    "tmdb_api_key", "prowlarr_url", "prowlarr_api_key", "radarr_url", "radarr_api_key",
+    "tmdb_api_key", "omdb_api_key", "prowlarr_url", "prowlarr_api_key", "radarr_url", "radarr_api_key",
     "radarr_root_folder_path", "radarr_quality_profile_id", "sonarr_url", "sonarr_api_key",
     "sonarr_root_folder_path", "sonarr_quality_profile_id", "qbittorrent_url",
     "qbittorrent_auth_method", "qbittorrent_api_key", "qbittorrent_username", "qbittorrent_password",
     "plex_url", "plex_token", "plex_library_key", "plex_machine_identifier",
 }
-SECRET_FIELDS = {"tmdb_api_key", "prowlarr_api_key", "radarr_api_key", "sonarr_api_key", "qbittorrent_api_key", "qbittorrent_password", "plex_token"}
+SECRET_FIELDS = {"omdb_api_key", "tmdb_api_key", "prowlarr_api_key", "radarr_api_key", "sonarr_api_key", "qbittorrent_api_key", "qbittorrent_password", "plex_token"}
 URL_FIELDS = {"prowlarr_url", "radarr_url", "sonarr_url", "qbittorrent_url", "plex_url"}
 
 DEFAULT_OPTIONS: dict[str, Any] = {

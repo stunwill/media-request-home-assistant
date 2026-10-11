@@ -107,10 +107,11 @@ def records():
 
 def test_effective_request_route_and_capture_graph():
     route = next(r for r in watchlist_main.app.routes if r.path == '/api/movies/{tmdb_id}/request')
-    assert route.endpoint is endpoint.request_movie and route.dependant.call is endpoint.request_movie
+    from mediahub.app import feature_release
+    assert route.endpoint is feature_release.request_movie and route.dependant.call is feature_release.request_movie
     assert preset_main._original_request_movie is runtime.request_movie
     assert runtime._original_request_movie is enhanced_main.request_movie
-    assert watchlist_main.app.version == '0.16.17'
+    assert watchlist_main.app.version == '0.17.0'
 
 
 def test_donut_discovery_to_exact_radarr_push_and_shared_lifecycle(setup):

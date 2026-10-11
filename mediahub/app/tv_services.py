@@ -185,6 +185,8 @@ class SonarrClient:
         return [item for item in payload or [] if isinstance(item, dict)]
 
     async def ensure_series(self, show: dict[str, Any], *, selected_seasons: list[int] | None = None) -> dict[str, Any]:
+        from .release_search_control import discovery_only
+        discovering = discovery_only.get()
         tvdb_id = int((show.get("external_ids") or {}).get("tvdb_id") or 0)
         existing = None
         for item in await self.series():
@@ -193,6 +195,13 @@ class SonarrClient:
             if int(item.get("tmdbId") or 0) == int(show.get("tmdb_id") or 0):
                 existing = item; break
         if existing:
+            if not discovering and existing.get('monitored') is False:
+                requested = set(selected_seasons or [])
+                existing = {**existing, 'monitored': True, 'seasons': [
+                    {**season, 'monitored': int(season.get('seasonNumber') or 0) > 0 and
+                     (not requested or int(season.get('seasonNumber') or 0) in requested)}
+                    for season in existing.get('seasons') or []]}
+                return await self._request('PUT', f"/api/v3/series/{existing['id']}", json=existing)
             return existing
         candidates = await self.lookup(tvdb_id=tvdb_id or None, term=str(show.get("name") or show.get("title") or ""))
         candidate = next((item for item in candidates if tvdb_id and int(item.get("tvdbId") or 0) == tvdb_id), candidates[0] if candidates else None)
@@ -203,8 +212,8 @@ class SonarrClient:
         seasons = []
         for season in candidate.get("seasons", []) or []:
             number = int(season.get("seasonNumber") or 0)
-            item = dict(season); item["monitored"] = number > 0 and (not requested or number in requested); seasons.append(item)
-        body = {**candidate, "qualityProfileId": defaults.quality_profile_id, "rootFolderPath": defaults.root_folder_path, "monitored": True, "seasonFolder": True, "seasons": seasons, "addOptions": {"searchForMissingEpisodes": False}}
+            item = dict(season); item["monitored"] = not discovering and number > 0 and (not requested or number in requested); seasons.append(item)
+        body = {**candidate, "qualityProfileId": defaults.quality_profile_id, "rootFolderPath": defaults.root_folder_path, "monitored": not discovering, "seasonFolder": True, "seasons": seasons, "addOptions": {"searchForMissingEpisodes": False}}
         return await self._request("POST", "/api/v3/series", json=body)
 
     async def search(self, series_id: int, selected_seasons: list[int] | None = None) -> None:

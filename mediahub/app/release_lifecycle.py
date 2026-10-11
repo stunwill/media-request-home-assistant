@@ -504,13 +504,13 @@ _RELEASE_LIFECYCLE_UI = r"""
   let releaseSearchGeneration=0;
   let movieReleaseSearch=null;
   function releaseSearchCurrent(search){return movieReleaseSearch===search&&search.generation===releaseSearchGeneration&&state.movie===search.movie&&state.movie?.tmdb_id===search.tmdbId&&document.getElementById('release-area')===search.area&&!document.getElementById('modal').classList.contains('hidden');}
-  function focusReleaseArea(area){const dialog=area?.closest('.dialog');if(!dialog||document.getElementById('release-area')!==area)return;const top=Math.max(0,area.offsetTop-16);dialog.scrollTo({top,behavior:'auto'});}
+  function focusReleaseArea(area,automatic=false){if(automatic)return;const dialog=area?.closest('.dialog');if(!dialog||document.getElementById('release-area')!==area)return;const top=Math.max(0,area.offsetTop-16);dialog.scrollTo({top,behavior:'auto'});}
   cancelReleaseSearch=function(){
     const search=movieReleaseSearch;
     if(!search)return;
     if(releaseSearchCurrent(search)){
       search.area.dataset.searchState='CANCELLED';search.area.setAttribute('aria-busy','false');
-      search.area.innerHTML='<div class="empty" role="status">Release search cancelled.<button class="button" id="retry-release-search">Try again</button></div>';
+      search.area.innerHTML='<div class="empty" role="status">Release search cancelled.<button class="button" id="retry-release-search">Retry search</button></div>';
       document.getElementById('retry-release-search')?.addEventListener('click',()=>findReleases(search.manualOverride));
     }
     search.status='CANCELLED';clearTimeout(search.deadline);search.controller.abort();search.rejectAbort(new DOMException('Search cancelled','AbortError'));
@@ -522,17 +522,17 @@ _RELEASE_LIFECYCLE_UI = r"""
     const area=document.getElementById('release-area'),movie=state.movie;
     if(!area||!movie||movie.media_type==='tv')return;
     const selectedRules=rules(),controller=new AbortController();
-    const search={area,movie,tmdbId:movie.tmdb_id,controller,generation:++releaseSearchGeneration,status:'SEARCHING',manualOverride};
+    const search={area,movie,tmdbId:movie.tmdb_id,controller,generation:++releaseSearchGeneration,status:'SEARCHING',manualOverride,automatic:!!window.MEDIAHUB_AUTOMATIC_DISCOVERY};
     movieReleaseSearch=search;activeReleaseSearch=controller;
     const abort=new Promise((_,reject)=>{search.rejectAbort=reject;});
     const finish=status=>{search.status=status;area.dataset.searchState=status;area.setAttribute('aria-busy','false');};
     area.dataset.searchState='SEARCHING';area.setAttribute('aria-busy','true');
     try{
-      area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty" role="status">Searching Radarr and Prowlarr for available releases…<br>This search has an 18-second server limit.<div><button class="button" id="cancel-release-search">Cancel Search</button></div></div>`;
+      area.innerHTML=`${rulesHtml(selectedRules)}<div class="release-loading" role="status">Searching Radarr and Prowlarr for available releases…<br>This search has an 18-second server limit.<div><button class="button" id="cancel-release-search">Cancel Search</button></div></div>`;
       document.getElementById('cancel-release-search')?.addEventListener('click',cancelReleaseSearch);
-      focusReleaseArea(area);
+      focusReleaseArea(area,search.automatic);
       search.deadline=setTimeout(()=>{search.status='TIMED_OUT';controller.abort();search.rejectAbort(new DOMException('Release search timed out','AbortError'));},22000);
-      const suffix=manualOverride?'?manual_override=true':'';
+      const suffix=manualOverride?'?manual_override=true':window.MEDIAHUB_AUTOMATIC_DISCOVERY?'':'?refresh=true';
       const data=await Promise.race([api(`movies/${search.tmdbId}/releases${suffix}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selectedRules),signal:controller.signal}),abort]);
       if(!releaseSearchCurrent(search))return;
       if(data.search_state==='deferred_upcoming'){
@@ -543,16 +543,16 @@ _RELEASE_LIFECYCLE_UI = r"""
       const unavailable=(data.releases||[]).filter(release=>!release.eligible);
       const availableRows=available.map(release=>`<article class="release" data-eligible="true"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${Number(release.size_gb||0).toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div></div><button class="button primary" data-token="${esc(release.release_token||'')}">Download</button></article>`).join('');
       const unavailableRows=unavailable.map(release=>`<article class="release" data-eligible="false"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${Number(release.size_gb||0).toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div>${releaseReason(release)}</div><button class="button" disabled>${esc(release.rejection_label||'Unavailable')}</button></article>`).join('');
-      area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${releaseSummary(data)}</div><button class="button" id="rerun-search">Search again</button></div><div class="releases">${availableRows||(!unavailableRows?`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`:'')}</div>${unavailableRows?`<details class="unavailable-releases"><summary>Unavailable releases (${unavailable.length})</summary><div class="releases">${unavailableRows}</div></details>`:''}`;
+      area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${releaseSummary(data)}</div><button class="button" id="rerun-search">Refresh releases</button></div><div class="releases">${availableRows||(!unavailableRows?`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`:'')}</div>${unavailableRows?`<details class="unavailable-releases"><summary>Unavailable releases (${unavailable.length})</summary><div class="releases">${unavailableRows}</div></details>`:''}`;
       document.getElementById('rerun-search').addEventListener('click',()=>findReleases(manualOverride));
-      focusReleaseArea(area);
+      focusReleaseArea(area,search.automatic);
       area.querySelectorAll('[data-token]').forEach(button=>button.addEventListener('click',()=>submitRequest(button.dataset.token,button)));
     }catch(error){
       if(!releaseSearchCurrent(search))return;
       const timedOut=search.status==='TIMED_OUT'||error?.status===504;
       finish(timedOut?'TIMED_OUT':error?.name==='AbortError'?'CANCELLED':'ERROR');
       const message=timedOut?'Release search timed out. Prowlarr or an indexer is taking too long to respond.':error?.message||'Release search failed. Please try again.';
-      area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty" role="status"><strong>Release search could not be completed.</strong><br>${esc(message)}<div style="margin-top:12px"><button class="button" id="retry-release-search">Try again</button>${state.user?.role==='admin'?'<button class="button" id="release-check-setup">Check Setup</button>':''}</div></div>`;
+      area.innerHTML=`${rulesHtml(selectedRules)}<div class="empty" role="status"><strong>Release search could not be completed.</strong><br>${esc(message)}<div style="margin-top:12px"><button class="button" id="retry-release-search">Retry search</button>${state.user?.role==='admin'?'<button class="button" id="release-check-setup">Check Setup</button>':''}</div></div>`;
       document.getElementById('retry-release-search')?.addEventListener('click',()=>findReleases(manualOverride));
       document.getElementById('release-check-setup')?.addEventListener('click',()=>{closeModal();showView('setup');});
     }finally{

@@ -687,6 +687,10 @@ async def downloads(principal: main.CurrentUser) -> list[dict[str, Any]]:
                 progress = float(item.get("progress") or 0)
                 message = str(item.get("status_message") or status.replace("_", " ").title())
 
+            from .download_history import evidence
+            evidence(db, item['id'], torrent=torrent, queue=queue_item,
+                     imported_at=(library_movie or {}).get('movieFile', {}).get('dateAdded') if status == 'available' else None)
+
             changed = (
                 status != item["status"]
                 or progress != float(item.get("progress") or 0)

@@ -16,6 +16,7 @@ from .tv_services import SonarrClient
 app = tv_main.app
 app.version = "0.11.0-dev"
 
+series_title_by_id: dict[int, str] = {}
 TV_RELEASE_CACHE_SECONDS = 25 * 60
 _tv_release_cache: dict[str, tuple[float, str, int, int | None, int | None, dict[str, Any]]] = {}
 
@@ -154,9 +155,16 @@ def _episode_status(episode: dict[str, Any], queued_episode_ids: set[int]) -> st
 async def _show_and_series(tmdb_id: int, seasons: list[int] | None = None) -> tuple[dict[str, Any], SonarrClient, dict[str, Any]]:
     tmdb, sonarr = tv_main.tv_clients()
     show = await tmdb.details(tmdb_id)
-    series = await sonarr.ensure_series(show, selected_seasons=seasons)
+    from .release_search_control import discovery_only
+    discovery_token = discovery_only.set(True)
+    try:
+        series = await sonarr.ensure_series(show, selected_seasons=seasons)
+    finally:
+        discovery_only.reset(discovery_token)
     if not int(series.get("id") or 0):
         raise MediaServiceError("Sonarr returned an invalid series response")
+    # Human series name travels with the existing opaque selection token.
+    series_title_by_id[int(series['id'])] = str(show.get('name') or show.get('title') or series.get('title') or '')
     return show, sonarr, series
 
 
@@ -283,11 +291,13 @@ async def grab_tv_release(payload: TvGrabRequest, principal: main.CurrentUser) -
               available_episode_count,total_episode_count,season_number,episode_number,
               sonarr_episode_id,selected_release_title,selected_release_size_bytes,selected_release_source
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, ("tv", selected_title, str(series_id), principal.user_id, principal.display_name, public["size_gb"] or 0.01, 0, "downloading", None, 0, "Downloading selected TV release", now, now, series_id, "episode" if episode_id else "season_pack", json.dumps([season_number] if season_number else []), 0, 1 if episode_id else len(relevant), season_number, episode_number, episode_id, selected_title, int(release.get("size") or 0), public.get("source")))
+            """, ("tv", selected_title, str(series_id), principal.user_id, principal.display_name, public["size_gb"] or 0.01, 0, "queued", None, 0, "Selected TV release sent to Sonarr", now, now, series_id, "episode" if episode_id else "season_pack", json.dumps([season_number] if season_number else []), 0, 1 if episode_id else len(relevant), season_number, episode_number, episode_id, selected_title, int(release.get("size") or 0), public.get("source")))
         request_id = int(cursor.lastrowid)
+        if series_title_by_id.get(series_id):
+            db.execute('UPDATE requests SET series_title=? WHERE id=?', (series_title_by_id[series_id], request_id))
         main.record_audit(db, actor_id=principal.user_id, actor_name=principal.display_name, action="tv_episode_release_selected" if episode_id else "tv_season_release_selected", request_id=request_id, details={"series_id": series_id, "season_number": season_number, "episode_id": episode_id, "size_bytes": int(release.get("size") or 0)})
         db.commit()
-    return {"request_id": request_id, "status": "downloading", "scope": "episode" if episode_id else "season", "title": selected_title}
+    return {"request_id": request_id, "status": "queued", "scope": "episode" if episode_id else "season", "title": selected_title}
 
 
 async def reconcile_selected_tv_releases() -> None:
@@ -321,6 +331,13 @@ async def reconcile_selected_tv_releases() -> None:
                         status, progress, message = "downloading", float(row.get("progress") or 0), "Downloading through Sonarr"
                     else:
                         status, progress, message = "processing", float(row.get("progress") or 0), "Waiting for Sonarr import"
+                    from .download_history import evidence
+                    transfer = next((q for q in queue if int(q.get('episodeId') or 0) == episode_id), None)
+                    if transfer and status != 'available':
+                        status, progress, message = main._download_status(transfer, None)
+                        message = message.replace('Radarr', 'Sonarr')
+                    evidence(db, row['id'], queue=transfer,
+                             imported_at=(episode.get('episodeFile') or {}).get('dateAdded') if status == 'available' else None)
                     db.execute("UPDATE requests SET status=?,progress=?,status_message=?,available_episode_count=?,updated_at=? WHERE id=?", (status, progress, message, 1 if status == "available" else 0, main.utc_now(), row["id"]))
                 else:
                     season_number = int(row.get("season_number") or 0)
@@ -339,6 +356,16 @@ async def reconcile_selected_tv_releases() -> None:
                         status, progress, message = "downloading", float(row.get("progress") or 0), "Downloading season through Sonarr"
                     else:
                         status, progress, message = "processing", float(row.get("progress") or 0), "Waiting for Sonarr import"
+                    from .download_history import evidence
+                    ids = {int(ep.get('id') or 0) for ep in season_eps}
+                    transfer = next((q for q in queue if int(q.get('episodeId') or 0) in ids or
+                                     int(q.get('seriesId') or 0) == series_id and int(q.get('seasonNumber') or -1) == season_number), None)
+                    if transfer and status != 'available' and not available:
+                        status, progress, message = main._download_status(transfer, None)
+                        message = message.replace('Radarr', 'Sonarr')
+                    dates = [(ep.get('episodeFile') or {}).get('dateAdded') for ep in season_eps]
+                    evidence(db, row['id'], queue=transfer,
+                             imported_at=max(dates) if status == 'available' and all(dates) else None)
                     db.execute("UPDATE requests SET status=?,progress=?,status_message=?,available_episode_count=?,total_episode_count=?,updated_at=? WHERE id=?", (status, progress, message, available, total, main.utc_now(), row["id"]))
             db.commit()
 

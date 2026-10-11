@@ -93,6 +93,7 @@ class MediaRequest(BaseModel):
 
 IntegrationField = Literal[
     "tmdb_api_key",
+    "omdb_api_key",
     "prowlarr_url",
     "prowlarr_api_key",
     "radarr_url",
@@ -109,6 +110,7 @@ IntegrationField = Literal[
 ]
 SecretField = Literal[
     "tmdb_api_key",
+    "omdb_api_key",
     "prowlarr_api_key",
     "radarr_api_key",
     "sonarr_api_key",
@@ -270,6 +272,8 @@ def initialise_database() -> None:
             "download_id": "TEXT",
             "progress": "REAL NOT NULL DEFAULT 0",
             "status_message": "TEXT",
+            "download_started_at": "TEXT", "download_completed_at": "TEXT", "imported_at": "TEXT",
+            "available_observed_at": "TEXT", "actual_size_bytes": "INTEGER", "progress_known": "INTEGER NOT NULL DEFAULT 0", "series_title": "TEXT",
         }
         for name, definition in migrations.items():
             if name not in existing_columns:
@@ -1020,7 +1024,7 @@ def _download_status(queue_item: dict, torrent: dict | None) -> tuple[str, float
             return "processing", progress, "Download complete, waiting for Radarr import"
         return "downloading", progress, state or "Downloading"
     size = float(queue_item.get("size") or 0)
-    size_left = float(queue_item.get("sizeleft") or queue_item.get("sizeLeft") or size)
+    size_left = float(queue_item.get("sizeleft", queue_item.get("sizeLeft", size)))
     progress = round(max(0, min(100, (1 - size_left / size) * 100)), 1) if size else 0
     status = str(queue_item.get("status") or "queued").lower()
     if tracked_status in {"warning", "error"}:

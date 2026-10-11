@@ -47,8 +47,8 @@ const dom = new JSDOM(html, {url:'https://ha.test/api/hassio_ingress/test-token/
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const evaluate=source=>win.eval(source);
 const q=id=>win.document.getElementById(id);
-async function open(id=653574){await evaluate(`openMovie(${id})`);await wait(25);assert(q('choose-release'));}
-function start(){const before=releaseScrolls,promise=evaluate('findReleases(false)');assert.equal(q('release-area').dataset.searchState,'SEARCHING');assert(q('cancel-release-search'));return {promise,request:pending.at(-1),area:q('release-area'),beforeScrolls:before};}
+async function open(id=653574){await evaluate(`openMovie(${id})`);await wait(25);assert(!q('choose-release'));assert(q('auto-request'));evaluate('cancelReleaseSearch()');await wait(5);}
+function start(){evaluate('cancelReleaseSearch()');const before=releaseScrolls,promise=evaluate('findReleases(false)');assert.equal(q('release-area').dataset.searchState,'SEARCHING');assert(q('cancel-release-search'));return {promise,request:pending.at(-1),area:q('release-area'),beforeScrolls:before};}
 function terminal(area,status){assert.equal(area.dataset.searchState,status);assert.equal(area.getAttribute('aria-busy'),'false');assert(!area.textContent.includes('Searching Radarr'));}
 (async()=>{
   await wait(30);
@@ -78,7 +78,7 @@ function terminal(area,status){assert.equal(area.dataset.searchState,status);ass
   // Replacement search must ignore stale results on the very same DOM node.
   await open();const old=start(),newer=start();await old.promise;assert(old.request.options.signal.aborted);old.request.resolve({releases:[release]});await wait(10);assert.equal(newer.area.dataset.searchState,'SEARCHING');newer.request.resolve({releases:[]});await newer.promise;terminal(newer.area,'NO_RESULTS');
   // Close A/open B and the old response completes late.
-  const a=start();q('close-modal').click();await open(999);await a.promise;const bArea=q('release-area');a.request.resolve({releases:[release]});await wait(10);assert.equal(bArea.innerHTML,'');assert.equal(evaluate('state.movie.tmdb_id'),999);
+  const a=start();q('close-modal').click();await open(999);await a.promise;const bArea=q('release-area');a.request.resolve({releases:[release]});await wait(10);assert(!bArea.textContent.includes(release.title));assert.equal(evaluate('state.movie.tmdb_id'),999);
   // Opening another Movie directly also cancels a pending search.
   const switching=start();await open(123);await switching.promise;assert(switching.request.options.signal.aborted);
   // Movie-to-TV navigation cancels and cannot receive the late Movie result.

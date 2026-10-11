@@ -1,3 +1,25 @@
+## [0.17.0] - 2026-10-12
+
+### Added
+- Automatic, cancellable Movie/TV release discovery with short user/settings-scoped caching, retry and refresh. Discovery-created Arr metadata stays unmonitored.
+- Optional IMDb-matched OMDb Rotten Tomatoes critic scores, secure Setup configuration and connection testing, bounded progressive loading, persistent caching and a shared daily request budget.
+- Rotten Tomatoes minimum/maximum filtering across verified cached catalogue/search titles, with explicit coverage limitations and correct cached-population pagination.
+- Compact responsive Downloads history table, six fields, expandable details and an authenticated paginated history endpoint.
+- Additive request lifecycle/size evidence and metadata caches without deleting legacy history.
+
+### Changed
+- Header navigation replaces the fixed bottom bar. Detail navigation sits above Back/Close; notifications occupy layout below navigation.
+- Dark Request best release action sits below releases. Older movies suppress redundant availability panels.
+- Download history retains cached records during service failures, distinguishes transfer from import and displays local timezone dates and known progress only.
+
+### Fixed
+- Completed Arr queue transfers with zero bytes remaining enter the import state correctly.
+- Movie/TV stale responses, duplicate discovery/submission and cancellation remain bounded through the effective runtime routes.
+
+### Notes
+- OMDb is optional; no paid service is required. RT filtering is explicitly limited to verified cached titles, not the complete TMDB catalogue.
+- See docs/MOBILE_DISCOVERY_HISTORY.md for migrations, provider limitations, upgrade and outstanding manual acceptance.
+
 ## [0.16.17] - 2026-10-08
 
 ### Fixed

@@ -1,3 +1,14 @@
+## v0.17.0
+
+Status: Feature release in review
+
+- [x] Header/detail navigation, in-flow notifications and dark bottom best-release action.
+- [x] Automatic Movie/TV discovery with cancellation, caching and no automatic acquisition.
+- [x] Optional OMDb critic scores and honest cached-catalogue min/max filters.
+- [x] Paginated compact download-history table with expandable lifecycle details.
+- [ ] Live Home Assistant/mobile/Arr/OMDb acceptance after review.
+- [ ] Future: weekly download statistics, table sorting and table filters.
+
 ## v0.16.17
 
 Status: Corrective release in review

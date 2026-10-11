@@ -13,7 +13,7 @@ from fastapi import HTTPException
 
 from mediahub.app import (
     main, enhanced_main, preset_main, movie_release_endpoint as endpoint, release_lifecycle, release_identity_main,
-    release_search_control as control, runtime, watchlist_main,
+    release_search_control as control, runtime, watchlist_main, feature_release,
 )
 
 MOVIE = {'tmdb_id': 653574, 'title': 'The Donut King', 'original_title': 'The Donut King',
@@ -28,9 +28,9 @@ def run(coro):
 
 def test_final_route_and_capture_graph():
     route = next(r for r in watchlist_main.app.routes if r.path == '/api/movies/{tmdb_id}/releases')
-    assert watchlist_main.app.version == "0.16.17"
-    assert route.endpoint is endpoint.movie_releases
-    assert route.dependant.call is endpoint.movie_releases
+    assert watchlist_main.app.version == "0.17.0"
+    assert route.endpoint is feature_release.movie_releases
+    assert route.dependant.call is feature_release.movie_releases
     assert release_identity_main._original_search_movie_releases is runtime.search_movie_releases
     assert runtime._original_search_movie_releases.__module__.endswith('enhanced_main')
 
@@ -259,7 +259,7 @@ def test_actual_asgi_endpoint_presets_identity_metadata_and_health(hung):
                  patch.object(runtime, '_prowlarr_search', prowlarr), \
                  patch.object(control, 'SERVER_SECONDS', .1 if hung else 1):
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://ha.test') as client:
-                    work = asyncio.create_task(client.post('/api/movies/653574/releases', json={
+                    work = asyncio.create_task(client.post('/api/movies/653574/releases?refresh=true', json={
                         'maximum_size_gb': 100, 'minimum_seeders': 0}))
                     await asyncio.sleep(.02)
                     health = await client.get('/api/health')

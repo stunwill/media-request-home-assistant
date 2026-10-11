@@ -68,6 +68,8 @@ INDEX_HTML = r"""
         <label class="field">Released to<input id="year-to" type="number" min="1874" max="2100" inputmode="numeric" placeholder="Any year"></label>
         <label class="field">Rating from<input id="rating-from" type="number" min="1" max="10" step="0.1" inputmode="decimal" placeholder="1.0"></label>
         <label class="field">Rating to<input id="rating-to" type="number" min="1" max="10" step="0.1" inputmode="decimal" placeholder="10.0"></label>
+        <label class="field">Rotten Tomatoes minimum (%)<input id="rt-min" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="Any"></label>
+        <label class="field">Rotten Tomatoes maximum (%)<input id="rt-max" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="Any"></label>
         <button class="button clear-filters" id="clear-filters" type="button">Clear filters</button>
       </div>
       <div class="heading"><div><h2 id="catalogue-title">Popular movies</h2><p id="catalogue-meta">Loading TMDb...</p></div></div>
