@@ -155,7 +155,8 @@ def filter_local(kind,scope,params,page,rules):
           WHERE c.scope=? AND c.media_type=? ORDER BY c.tmdb_id''',(scope,kind)).fetchall()
     data=[{**json.loads(row['payload']),'first_seen':row['first_seen'] or 0} for row in rows]
     scores=store.snapshot(kind,[item['tmdb_id'] for item in data])
-    coverage={'inspected':len(data),'verified':0,'awaiting':0,'unavailable':0,'expired':0,'failed':0,'outside_range':0}
+    coverage={'inspected':len(data),'verified':0,'awaiting':0,'unavailable':0,'expired':0,'failed':0,'outside_range':0,
+              'missing_excluded':0,'sources':{source:0 for source in rules}}
     matches=[]
     for item in data:
         matrix=scores[str(item['tmdb_id'])]
@@ -165,6 +166,8 @@ def filter_local(kind,scope,params,page,rules):
         states=[]
         for source,rule in rules.items():
             entry=matrix[source]
+            if entry['status']=='verified' and entry.get('value') is not None:
+                coverage['sources'][source]+=1
             states.append(entry['status'])
             if entry['status']!='verified' or entry.get('value') is None:
                 missing=True
@@ -189,6 +192,8 @@ def filter_local(kind,scope,params,page,rules):
             coverage['verified']+=1
         if rejected:
             coverage['outside_range']+=1
+        if missing and params.get('missing','exclude')!='include':
+            coverage['missing_excluded']+=1
         if rejected or missing and params.get('missing','exclude')!='include':
             continue
         year=int(item.get('year') or 0)
@@ -222,15 +227,27 @@ def filter_local(kind,scope,params,page,rules):
         return (False,value if sort=='oldest' else -value,item['tmdb_id'])
     matches.sort(key=ordering)
     incomplete=coverage['awaiting']+coverage['failed']+coverage['expired']
-    message=f"{len(matches)} verified-data matches in {len(data)} inspected TMDb candidates. "
+    message=f"{len(matches)} {'results (unverified titles labelled)' if params.get('missing')=='include' else 'verified-data matches'} in {len(data)} inspected TMDb candidates. "
     if incomplete or coverage['unavailable']:
         message+=f"{coverage['awaiting']} awaiting, {coverage['expired']} expired, {coverage['failed']} failed, {coverage['unavailable']} unavailable. "
     message+='This is an incremental candidate dataset, not the whole catalogue. Enrich this discovery to inspect more candidates.'
     if not any(store.key(provider) for provider in store.EXTERNAL) and any(source!='tmdb' for source in rules):
         message='External ratings are not configured. Add MDBList or OMDb in Setup, or choose TMDb filters. '+message
+    result_state = ('enrichment_required' if not data else 'partial' if matches and (incomplete or coverage['unavailable']) else
+                    'results' if matches else 'provider_error' if coverage['failed'] else
+                    'enrichment_required' if coverage['awaiting'] or coverage['expired'] else
+                    'ratings_unavailable' if coverage['unavailable'] else 'no_matches')
+    headings={'enrichment_required':'Enrichment required, not proof of no matching titles.',
+              'provider_error':'Provider error: some ratings could not be evaluated.',
+              'ratings_unavailable':'Ratings unavailable for the inspected candidates.',
+              'partial':'Partial results: ratings coverage is incomplete.', 'no_matches':'No matching titles in the verified inspected dataset.'}
+    if result_state in headings:
+        message=headings[result_state]+' '+message
+    message+=' '+'. '.join(f'{source.replace("_"," ")}: verified scores for {count} of {len(data)} inspected titles' for source,count in coverage['sources'].items())
     return {'movies' if kind=='movie' else 'shows':matches[(page-1)*20:page*20],
             'page':page,'total_results':len(matches),'total_pages':max(1,math.ceil(len(matches)/20)),
-            'coverage':coverage,'catalogue_notice':message,'search_scope':'incremental_tmdb_candidates'}
+            'coverage':coverage,'catalogue_notice':message,'search_scope':'incremental_tmdb_candidates',
+            'result_state':result_state}
 
 
 async def discover(kind,request: Request,principal: main.CurrentUser):
@@ -239,6 +256,12 @@ async def discover(kind,request: Request,principal: main.CurrentUser):
     kind='movie' if kind=='movies' else 'tv'
     params=request.query_params
     rules=validate(params)
+    available=store.availability(kind)['sources']
+    disabled=[source for source in rules if not available[source]['enabled']]
+    if params.get('sort') in available and not available[params['sort']]['enabled']:
+        disabled.append(params['sort'])
+    if disabled:
+        raise HTTPException(422,'Ratings unavailable: '+', '.join(disabled)+'. Configure the supported provider in Setup or remove these filters.')
     page=option_number(params,'page',500) or 1
     scope=scope_for(kind,params)
     with main.connect_db() as db:

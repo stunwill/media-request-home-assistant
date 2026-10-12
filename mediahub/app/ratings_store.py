@@ -122,6 +122,28 @@ def snapshot(kind, ids):
     return result
 
 
+def availability(kind='movie'):
+    """Public source capabilities, without keys or raw provider errors."""
+    now = time.time()
+    with main.connect_db() as db:
+        counts = {row['source']: row['n'] for row in db.execute('''SELECT source,COUNT(DISTINCT tmdb_id) n
+          FROM rating_values WHERE kind=? AND status='verified' AND value IS NOT NULL AND expires>?
+          GROUP BY source''', (kind, now))}
+        health = {row['provider']: row['status'] for row in db.execute('SELECT provider,status FROM rating_health')}
+    result = {}
+    for source in providers.SOURCES:
+        configured = [provider for provider, sources in EXTERNAL.items() if source in sources and key(provider)]
+        usable = counts.get(source, 0)
+        enabled = source == 'tmdb' or bool(configured or usable)
+        errors = [health.get(provider) for provider in configured if health.get(provider) not in (None,'verified')]
+        result[source] = {'enabled': enabled, 'verified_cached': usable, 'configured': bool(configured) or source=='tmdb',
+                          'state': 'available' if usable or source=='tmdb' else 'provider_error' if errors else 'awaiting' if configured else 'not_configured',
+                          'reason': '' if usable or source=='tmdb' else 'Provider needs attention; cached coverage may be incomplete.' if errors else
+                          'Configured; scores require enrichment.' if configured else
+                          'MDBList is required for this source.' if source in {'rt_audience','letterboxd','trakt'} else 'Configure MDBList or OMDb, or use TMDb.'}
+    return {'media_type':kind, 'sources':result}
+
+
 def claim():
     now = time.time()
     with main.connect_db() as db:

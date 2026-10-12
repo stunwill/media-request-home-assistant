@@ -56,15 +56,20 @@ def utc_timestamp(value):
 def evidence(db, request_id, *, torrent=None, queue=None, imported_at=None):
     torrent, queue = torrent or {}, queue or {}
     size = torrent.get('total_size') or torrent.get('size') or queue.get('size')
-    known = bool(torrent or (queue.get('size') and ('sizeleft' in queue or 'sizeLeft' in queue)))
+    known = bool(('progress' in torrent and torrent['progress'] is not None) or
+                 (queue.get('size') and ('sizeleft' in queue or 'sizeLeft' in queue)))
     completed = utc_timestamp(torrent.get('completion_on'))
+    if not completed and str(queue.get('status') or '').lower()=='completed':
+        completed = main.utc_now()  # First observed confirmed completion, not historical reconstruction.
     imported = utc_timestamp(imported_at)
+    transferring = bool(float(torrent.get('dlspeed') or 0)>0) if torrent else str(queue.get('status') or '').lower()=='downloading'
     db.execute('''UPDATE requests SET
         actual_size_bytes=COALESCE(?,actual_size_bytes),
         download_completed_at=COALESCE(download_completed_at,?),
         imported_at=COALESCE(imported_at,?),
+        download_started_at=CASE WHEN ? THEN COALESCE(download_started_at,?) ELSE download_started_at END,
         progress_known=CASE WHEN ? THEN 1 ELSE progress_known END WHERE id=?''',
-        (int(size) if size and float(size) > 0 else None, completed, imported, known, request_id))
+        (int(size) if size and float(size) > 0 else None, completed, imported, transferring, main.utc_now(), known, request_id))
 
 
 def history_item(row):

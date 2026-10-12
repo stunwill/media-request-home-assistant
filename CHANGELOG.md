@@ -1,3 +1,22 @@
+## [0.19.0] - 2026-10-13
+
+### Added
+- Compact expandable mobile Downloads and eight-column desktop table; stable-ID attempt groups preserve every underlying record.
+- Permission-scoped paginated history, sort and media/requester/status filters; fresh-release review for supported failed movie retries.
+- Source capability/verified-cache checks and disabled unsupported ratings; explicit no-match, unavailable, awaiting, failed and partial states.
+- Keyboard-aware full-screen mobile filters, scoped Browse persistence and local-only navigation diagnostics.
+- Additive quality/seeder/handoff/failure evidence, compact Users listing and expandable account creation.
+
+### Fixed
+- Character-by-character history column wrapping; paused torrents mislabelled as active; failed attempts changing to Available after another attempt imports.
+- Users observer rewrites that could continuously trigger itself, concurrent account submissions and stale Movie/TV responses.
+- Best-release action enabled without eligible results, TV cancellation/timeout feedback and result scrolling behind detail navigation.
+
+### Verification and limitations
+- Mocked integration regressions and real Chromium ingress layout tests; physical iPhone/WebKit and live HA upgrade/download checks remain manual.
+- Retry opens fresh discovery, never automatically repeats a rejected token. Weekly statistics remain deferred.
+- Existing framework dependency audit warnings remain disclosed; this release does not claim a clean security audit.
+
 ## [0.18.0] - 2026-10-12
 
 ### Added

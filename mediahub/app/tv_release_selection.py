@@ -297,6 +297,8 @@ async def grab_tv_release(payload: TvGrabRequest, principal: main.CurrentUser) -
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, ("tv", selected_title, str(series_id), principal.user_id, principal.display_name, public["size_gb"] or 0.01, 0, "queued", None, 0, "Selected TV release sent to Sonarr", now, now, series_id, "episode" if episode_id else "season_pack", json.dumps([season_number] if season_number else []), 0, 1 if episode_id else len(relevant), season_number, episode_number, episode_id, selected_title, int(release.get("size") or 0), public.get("source")))
         request_id = int(cursor.lastrowid)
+        db.execute('''UPDATE requests SET sent_at=?,selected_release_quality=?,selected_release_seeders=? WHERE id=?''',
+                   (now,str(public.get('quality') or ''),public.get('seeders'),request_id))
         if series_title_by_id.get(series_id):
             db.execute('UPDATE requests SET series_title=? WHERE id=?', (series_title_by_id[series_id], request_id))
         main.record_audit(db, actor_id=principal.user_id, actor_name=principal.display_name, action="tv_episode_release_selected" if episode_id else "tv_season_release_selected", request_id=request_id, details={"series_id": series_id, "season_number": season_number, "episode_id": episode_id, "size_bytes": int(release.get("size") or 0)})

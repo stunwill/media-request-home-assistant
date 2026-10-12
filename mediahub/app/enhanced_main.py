@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import date, datetime
 from typing import Any
 
@@ -442,12 +443,17 @@ async def request_movie(
         selected_public = await runtime.validate_direct_selection(selected, payload, movie, radarr)
         fallback_active = bool(selected_public.get("recent_quality_fallback"))
 
-    def fail_record(request_id, message):
+    def fail_record(request_id, message, response_code=None, category='submission_failed'):
         with main.connect_db() as db:
+            from .download_management import safe_text
+            message = safe_text(message)
             db.execute(
                 "UPDATE requests SET status = 'failed', reserved_size_gb = 0, status_message = ?, updated_at = ? WHERE id = ?",
                 (message, main.utc_now(), request_id),
             )
+            db.execute('UPDATE requests SET failure_json=? WHERE id=?', (json.dumps({
+                'integration':'Radarr','category':category,'response_code':response_code,
+                'explanation':message,'timestamp':main.utc_now()}),request_id))
             main.record_audit(
                 db,
                 actor_id="system",
@@ -530,6 +536,10 @@ async def request_movie(
                     "storage": storage,
                 },
             )
+            db.execute('''UPDATE requests SET selected_release_source=?,selected_release_size_bytes=?,
+               selected_release_quality=?,selected_release_seeders=? WHERE id=?''',
+               (selected.get('indexer'),int(float(selected.get('size_gb') or 0)*1024**3),
+                str(selected.get('quality') or ''),selected.get('seeders'),request_id))
             db.commit()
         return request_id, storage
     creation = asyncio.create_task(asyncio.to_thread(create_record))
@@ -560,7 +570,9 @@ async def request_movie(
                    "Radarr submission cancelled; check Downloads before retrying" if isinstance(error, asyncio.CancelledError) else
                    "Radarr submission timed out; check Downloads before retrying" if isinstance(error, TimeoutError) else
                    "Radarr submission failed; check Downloads before retrying")
-        await asyncio.to_thread(fail_record, request_id, message)
+        await asyncio.to_thread(fail_record, request_id, message, getattr(error,'status_code',None),
+                                'cancelled' if isinstance(error,asyncio.CancelledError) else
+                                'timed_out' if isinstance(error,TimeoutError) else 'submission_failed')
         if isinstance(error, MediaServiceError):
             raise main.service_http_error(error) from error
         raise
@@ -576,6 +588,7 @@ async def request_movie(
                 """,
                 (download_id, "Release sent to Radarr", main.utc_now(), request_id),
             )
+            db.execute('UPDATE requests SET sent_at=COALESCE(sent_at,?) WHERE id=?',(main.utc_now(),request_id))
             main.record_audit(
                 db,
                 actor_id="system",
@@ -659,6 +672,9 @@ async def downloads(principal: main.CurrentUser) -> list[dict[str, Any]]:
         now = main.utc_now()
         for row in rows:
             item = dict(row)
+            if item.get('status') in {'failed','rejected','cancelled','timed_out'}:
+                results.append(main.public_request(item))
+                continue
             radarr_movie_id = int(item.get("radarr_movie_id") or 0)
             queue_item = queue_by_movie.get(radarr_movie_id)
             library_movie = library_by_movie.get(radarr_movie_id)

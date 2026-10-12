@@ -503,12 +503,12 @@ _RELEASE_LIFECYCLE_UI = r"""
 
   function summaryLabel(category){return({identity:'Identity mismatch',library_upgrade:'Radarr / library state',arr:'Radarr',mediahub_policy:'MediaHub household preset',indexer_availability:'Release availability',other:'Other'})[category]||category.replaceAll('_',' ');}
   function releaseSummary(data){const entries=Object.entries(data.rejection_summary||{});if(!entries.length)return '';return `<details class="release-summary-compact"><summary><strong>Why were releases excluded?</strong></summary>${entries.map(([category,count])=>`<div class="release-summary-row"><span>${esc(summaryLabel(category))}</span><strong>${count}</strong></div>`).join('')}</details>`;}
-  function releaseReason(release){const primary=release.primary_rejection;if(!primary)return '';const extra=(release.rejection_details||[]).filter(item=>item!==primary);return `<div class="release-primary-reason"><strong>${esc(release.rejection_label||'UNAVAILABLE')}</strong>${esc(primary.message||'Release unavailable')}${extra.length?`<details class="release-diagnostics"><summary>Details</summary>${extra.map(item=>`<div>${esc(item.message||'')}</div>`).join('')}</details>`:''}</div>`;}
+  function releaseReason(release){const fallback=(release.policy_rejections||release.rejections||[]).map(message=>({message}));const primary=release.primary_rejection||fallback[0];if(!primary)return '';const extra=(release.rejection_details||fallback).filter(item=>item!==primary);return `<div class="release-primary-reason"><strong>${esc(release.rejection_label||'UNAVAILABLE')}</strong>${esc(primary.message||'Release unavailable')}${extra.length?`<details class="release-diagnostics"><summary>Details</summary>${extra.map(item=>`<div>${esc(item.message||'')}</div>`).join('')}</details>`:''}</div>`;}
 
   let releaseSearchGeneration=0;
   let movieReleaseSearch=null;
   function releaseSearchCurrent(search){return movieReleaseSearch===search&&search.generation===releaseSearchGeneration&&state.movie===search.movie&&state.movie?.tmdb_id===search.tmdbId&&document.getElementById('release-area')===search.area&&!document.getElementById('modal').classList.contains('hidden');}
-  function focusReleaseArea(area,automatic=false){if(automatic)return;const dialog=area?.closest('.dialog');if(!dialog||document.getElementById('release-area')!==area)return;const top=Math.max(0,area.offsetTop-16);dialog.scrollTo({top,behavior:'auto'});}
+  function focusReleaseArea(area,automatic=false){if(automatic)return;const dialog=area?.closest('.dialog');if(!dialog||document.getElementById('release-area')!==area)return;const top=Math.max(0,area.offsetTop-(document.querySelector('.detail-toolbar')?.offsetHeight||0)-16);dialog.scrollTo({top,behavior:'auto'});}
   cancelReleaseSearch=function(){
     const search=movieReleaseSearch;
     if(!search)return;
