@@ -13,6 +13,7 @@ SERVER_SECONDS = 18
 PROVIDER_SECONDS = 6
 MAPPING_SECONDS = 2
 logger = logging.getLogger('mediahub.release_search')
+discovery_only: ContextVar[bool] = ContextVar('discovery_only', default=False)
 metadata_cache: ContextVar[dict | None] = ContextVar('movie_search_metadata', default=None)
 TIMEOUT_MESSAGE = 'Release search timed out. Prowlarr or an indexer is taking too long to respond. Check Setup and try again.'
 

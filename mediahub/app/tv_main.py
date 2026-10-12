@@ -229,6 +229,13 @@ async def reconcile_tv_requests() -> None:
                 status, message, progress = "downloading", "Downloading through Sonarr", float(item.get("progress") or 0)
             else:
                 status, message, progress = "searching", "Searching in Sonarr", float(item.get("progress") or 0)
+            from .download_history import evidence
+            transfer = next((q for q in queue if int(q.get('seriesId') or 0) == series_id), None)
+            if transfer and status != 'available' and not available:
+                status, progress, message = main._download_status(transfer, None)
+                message = message.replace('Radarr', 'Sonarr')
+            dates = [(ep.get('episodeFile') or {}).get('dateAdded') for ep in relevant]
+            evidence(db, item['id'], queue=transfer, imported_at=max(dates) if status == 'available' and all(dates) else None)
             db.execute(
                 "UPDATE requests SET status=?,status_message=?,progress=?,available_episode_count=?,total_episode_count=?,updated_at=? WHERE id=?",
                 (status, message, progress, available, total, main.utc_now(), item["id"]),

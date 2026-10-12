@@ -481,8 +481,13 @@ class RadarrClient:
         return payload if isinstance(payload, list) else []
 
     async def ensure_movie(self, tmdb_id: int) -> dict[str, Any]:
+        from .release_search_control import discovery_only
+        discovering = discovery_only.get()
         existing = next((item for item in await self.movies() if int(item.get("tmdbId") or 0) == tmdb_id), None)
         if existing:
+            if not discovering and existing.get('monitored') is False:
+                existing = {**existing, 'monitored': True}
+                return await self._request('PUT', f"/api/v3/movie/{existing['id']}", json=existing)
             return existing
         lookup = await self._request("GET", "/api/v3/movie/lookup/tmdb", params={"tmdbId": tmdb_id})
         defaults = await self._defaults()
@@ -490,8 +495,8 @@ class RadarrClient:
             {
                 "qualityProfileId": defaults.quality_profile_id,
                 "rootFolderPath": defaults.root_folder_path,
-                "monitored": True,
-                "addOptions": {"monitor": "movieOnly", "searchForMovie": False},
+                "monitored": not discovering,
+                "addOptions": {"searchForMovie": False, **({} if discovering else {"monitor": "movieOnly"})},
             }
         )
         return await self._request("POST", "/api/v3/movie", json=lookup)
