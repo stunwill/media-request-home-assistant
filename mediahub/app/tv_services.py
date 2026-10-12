@@ -20,6 +20,7 @@ def normalise_tv_show(show: dict[str, Any]) -> dict[str, Any]:
         "first_air_date": first_air_date,
         "year": first_air_date[:4] if len(first_air_date) >= 4 else None,
         "rating": round(float(show.get("vote_average") or 0), 1),
+        "rating_raw": float(show.get("vote_average") or 0),
         "vote_count": int(show.get("vote_count") or 0),
         "popularity": float(show.get("popularity") or 0),
         "poster_url": _image_url(show.get("poster_path"), "w500"),

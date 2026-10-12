@@ -1,3 +1,15 @@
+## v0.18.0
+
+Status: Feature release in review
+
+- [x] Modular MDBList/OMDb ratings, persistent per-source states and bounded enrichment.
+- [x] Multi-source AND filters, vote thresholds, missing-score policy and sorting.
+- [x] TMDb advanced discovery with honest partial coverage and candidate enrichment.
+- [x] Compact mobile navigation/filter/ratings layouts and Chromium visual tests.
+- [x] Read-only admin release diagnostics and concurrent migration safety.
+- [ ] Live HA/iPhone/provider-account acceptance after approval.
+- [ ] Deferred: direct Trakt trending, awards filtering and exhaustive external-rating coverage.
+
 ## v0.17.0
 
 Status: Feature release in review

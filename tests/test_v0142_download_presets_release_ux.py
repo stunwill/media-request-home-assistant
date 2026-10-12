@@ -222,7 +222,7 @@ def test_legacy_standalone_tv_setup_ui_is_not_active() -> None:
 
 def test_deployed_entrypoint_contains_unified_download_presets_ui() -> None:
     html = main.INDEX_HTML
-    assert mobile_ux_ui.app.version == "0.17.0"
+    assert mobile_ux_ui.app.version == "0.18.0"
     for marker in (
         "Download Presets",
         "Maximum Movie release size (GB)",

@@ -1,3 +1,12 @@
+## 0.18.0
+
+- Multi-source ratings via optional MDBList/OMDb, separate RT critics/audience, background enrichment, source-aware status/health and secure configuration.
+- Combined rating/vote filters, sorting, transparent coverage and explicit bounded candidate enrichment.
+- Compact ingress hamburger navigation, efficient mobile filter sheet and small horizontal rating rows.
+- Read-only administrator Radarr/Prowlarr diagnostics without bypassing download handoff.
+- Cross-process migration locking fixes duplicate-column startup races and preserves requests/history/settings.
+- Seven Chromium viewport checks and CI screenshot retention. See docs/RATINGS_DISCOVERY_V018.md for provider limits, deferred capabilities and upgrade acceptance.
+
 ## 0.17.0
 
 ### Added

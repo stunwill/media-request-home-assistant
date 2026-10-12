@@ -30,6 +30,10 @@ class TvGrabRequest(BaseModel):
     release_token: str = Field(min_length=16, max_length=200)
 
 
+from .schema_migrations import serialised  # noqa: E402
+
+
+@serialised
 def initialise_tv_release_database() -> None:
     tv_main.initialise_tv_database()
     with main.connect_db() as db:
