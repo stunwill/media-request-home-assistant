@@ -115,6 +115,20 @@ jobs:
       - name: Run test suite
         run: python -m pytest -q
 
+      - name: Install Chromium for visual regression tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify mobile layouts in Home Assistant ingress
+        run: npx playwright test
+
+      - name: Retain mobile acceptance screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediahub-mobile-visuals
+          path: test-results/
+          retention-days: 14
+
   dependency-audit:
     name: Dependency audit
     runs-on: ubuntu-latest

@@ -42,6 +42,7 @@ def normalise_movie(movie: dict[str, Any]) -> dict[str, Any]:
         "release_date": release_date,
         "year": release_date[:4] if len(release_date) >= 4 else None,
         "rating": round(float(movie.get("vote_average") or 0), 1),
+        "rating_raw": float(movie.get("vote_average") or 0),
         "vote_count": int(movie.get("vote_count") or 0),
         "popularity": float(movie.get("popularity") or 0),
         "poster_url": _image_url(movie.get("poster_path"), "w500"),

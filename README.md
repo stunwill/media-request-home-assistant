@@ -16,7 +16,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-The current release in review is `0.17.0`, based on `0.16.17`. It adds compact header/detail navigation, automatic release discovery, optional OMDb Rotten Tomatoes critic scores and a paginated Downloads history table. Rotten Tomatoes filters explicitly cover verified cached catalogue/search titles rather than the full TMDB catalogue. See [release notes and acceptance checklist](docs/MOBILE_DISCOVERY_HISTORY.md).
+The current release in review is `0.18.0`, based on merged `0.17.0`. It adds optional modular MDBList/OMDb multi-source ratings, bounded background enrichment, combined ratings/vote filters, advanced discovery, compact mobile layouts, read-only release diagnostics and cross-process startup migration safety. Existing automatic release discovery and Downloads history remain. External ratings filtering covers an explicitly enriched TMDb candidate dataset, not the whole catalogue. See [configuration, limitations and acceptance checklist](docs/RATINGS_DISCOVERY_V018.md).
 
 ## Release and policy architecture
 

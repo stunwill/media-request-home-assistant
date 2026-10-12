@@ -32,6 +32,10 @@ def tv_clients(options: dict[str, Any] | None = None) -> tuple[TmdbTvClient, Son
     )
 
 
+from .schema_migrations import serialised  # noqa: E402
+
+
+@serialised
 def initialise_tv_database() -> None:
     with main.connect_db() as db:
         columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(requests)").fetchall()}

@@ -94,6 +94,7 @@ class MediaRequest(BaseModel):
 IntegrationField = Literal[
     "tmdb_api_key",
     "omdb_api_key",
+    "mdblist_api_key",
     "prowlarr_url",
     "prowlarr_api_key",
     "radarr_url",
@@ -111,6 +112,7 @@ IntegrationField = Literal[
 SecretField = Literal[
     "tmdb_api_key",
     "omdb_api_key",
+    "mdblist_api_key",
     "prowlarr_api_key",
     "radarr_api_key",
     "sonarr_api_key",
@@ -173,12 +175,17 @@ def connect_db() -> sqlite3.Connection:
     DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DATABASE_FILE, timeout=30)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 30000")
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA busy_timeout = 30000")
     return connection
 
 
+from .schema_migrations import serialised  # noqa: E402
+
+
+@serialised
 def initialise_database() -> None:
     with connect_db() as db:
         db.executescript(

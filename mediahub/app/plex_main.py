@@ -11,6 +11,7 @@ app = plex_integration.app
 PlexIntegrationField = Literal[
     "tmdb_api_key",
     "omdb_api_key",
+    "mdblist_api_key",
     "prowlarr_url",
     "prowlarr_api_key",
     "radarr_url",
@@ -34,6 +35,7 @@ PlexIntegrationField = Literal[
 PlexSecretField = Literal[
     "tmdb_api_key",
     "omdb_api_key",
+    "mdblist_api_key",
     "prowlarr_api_key",
     "radarr_api_key",
     "sonarr_api_key",
@@ -90,6 +92,11 @@ async def update_integration_settings_with_plex(
     except (OSError, ValueError) as error:
         raise main.HTTPException(status_code=422, detail=str(error)) from error
     plex_library.PLEX_CACHE.clear()
+    from . import ratings_store
+    for provider in ('omdb','mdblist'):
+        field=provider+'_api_key'
+        if field in payload.updates or field in payload.clear_secrets:
+            ratings_store.credentials_changed(provider)
     with main.connect_db() as db:
         main.record_audit(
             db,

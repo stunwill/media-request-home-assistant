@@ -31,6 +31,10 @@ class _HideOmdbRequest(logging.Filter):
 logging.getLogger('httpx').addFilter(_HideOmdbRequest())
 
 
+from .schema_migrations import serialised  # noqa: E402
+
+
+@serialised
 def initialise():
     with main.connect_db() as db:
         db.executescript('''

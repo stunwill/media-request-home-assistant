@@ -20,6 +20,10 @@ FIELDS = {
 }
 
 
+from .schema_migrations import serialised  # noqa: E402
+
+
+@serialised
 def initialise():
     with main.connect_db() as db:
         columns = {row['name'] for row in db.execute('PRAGMA table_info(requests)')}

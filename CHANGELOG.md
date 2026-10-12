@@ -1,3 +1,22 @@
+## [0.18.0] - 2026-10-12
+
+### Added
+- Optional modular MDBList/OMDb enrichment for IMDb, RT critics/audience, Metacritic, Letterboxd and Trakt, with validated identities/native scales and no scraping.
+- Persistent per-source states, bounded background jobs, shared quotas, provider health/tests, configurable expiry and legacy verified-score preservation.
+- AND-combined ratings/vote filters, explicit missing-rating policy, native/local sorting, coverage states and bounded candidate enrichment.
+- Practical TMDb language/country/runtime/Australian streaming discovery filters.
+- Admin-only read-only Radarr/Prowlarr release diagnostics and evidence-based category hints.
+- Chromium ingress visual regression tests and CI screenshot artifacts.
+
+### Fixed
+- Serialize schema checks/DDL across HA worker processes, preventing duplicate-column startup races without deleting data or masking SQLite errors.
+- Replace duplicate ingress safe-area spacing, oversized Browse hero and competing header controls with compact hamburger navigation.
+- Compact multi-source rating rows, grouped scrollable filters with fixed actions, idempotent filter-count rendering and clear coverage/validation states.
+
+### Limitations
+- External-score discovery is an incrementally enriched TMDb candidate dataset, not a claim of whole-catalogue coverage.
+- Awards, direct Trakt trending, direct Letterboxd access and supporter-only episode matrices are deferred with reasons in docs/RATINGS_DISCOVERY_V018.md.
+
 ## [0.17.0] - 2026-10-12
 
 ### Added

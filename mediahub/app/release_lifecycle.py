@@ -178,6 +178,10 @@ def next_check(lifecycle: dict[str, Any], *, now: datetime | None = None) -> dat
     return now + timedelta(days=7)
 
 
+from .schema_migrations import serialised  # noqa: E402
+
+
+@serialised
 def initialise_watch_database() -> None:
     main.DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with main.connect_db() as db:

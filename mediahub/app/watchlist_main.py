@@ -20,6 +20,10 @@ class WatchlistCreate(BaseModel):
 
 
 
+from .schema_migrations import serialised  # noqa: E402
+
+
+@serialised
 def initialise_watchlist_database() -> None:
     release_lifecycle.initialise_watch_database()
     with main.connect_db() as db:
@@ -286,3 +290,5 @@ if "MEDIAHUB_WATCHLIST_V0150" not in main.INDEX_HTML:
 from . import movie_release_endpoint as _movie_release_endpoint  # noqa: E402,F401
 
 from . import feature_release as _feature_release  # noqa: E402,F401
+
+from . import ratings_api as _ratings_api  # noqa: E402,F401
