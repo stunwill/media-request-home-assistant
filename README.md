@@ -16,7 +16,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-The current release in review is `0.18.0`, based on merged `0.17.0`. It adds optional modular MDBList/OMDb multi-source ratings, bounded background enrichment, combined ratings/vote filters, advanced discovery, compact mobile layouts, read-only release diagnostics and cross-process startup migration safety. Existing automatic release discovery and Downloads history remain. External ratings filtering covers an explicitly enriched TMDb candidate dataset, not the whole catalogue. See [configuration, limitations and acceptance checklist](docs/RATINGS_DISCOVERY_V018.md).
+The current release in review is `0.19.0`, based on merged `0.18.0`. It adds compact mobile Downloads entries and an eight-column desktop table, stable-identity attempt grouping, server-side sorting/filtering/paging, ratings capability checks, keyboard-aware filters, release eligibility states and compact Users management. Existing ratings, acquisition integrations and history remain. See [root causes, upgrade instructions and acceptance checklist](docs/MOBILE_MANAGEMENT_V019.md), and [ratings provider configuration and limitations](docs/RATINGS_DISCOVERY_V018.md).
 
 ## Release and policy architecture
 

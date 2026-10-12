@@ -222,7 +222,7 @@ def test_legacy_standalone_tv_setup_ui_is_not_active() -> None:
 
 def test_deployed_entrypoint_contains_unified_download_presets_ui() -> None:
     html = main.INDEX_HTML
-    assert mobile_ux_ui.app.version == "0.18.0"
+    assert mobile_ux_ui.app.version == "0.19.0"
     for marker in (
         "Download Presets",
         "Maximum Movie release size (GB)",
@@ -241,7 +241,9 @@ def test_browse_release_context_never_renders_fake_download_metadata() -> None:
     assert "movie.context!=='downloads'" in html
     assert "safeDate(lib.requested_at)" in html
     assert "Invalid Date" not in html
-    assert "Not recorded" not in html
+    # Legacy Browse details must not invent download metadata. The new history
+    # renderer legitimately uses a placeholder for missing historical values.
+    assert "Not recorded" not in html.split('MEDIAHUB_MANAGEMENT_V019')[0]
     assert "Number(lib.progress||0)" not in html
     assert "Number(lib.estimated_size_gb||0)" not in html
 

@@ -1,3 +1,15 @@
+## v0.19.0
+
+Status: Feature/corrective release in review
+
+- [x] Responsive grouped Downloads with pagination, sorting and filtering.
+- [x] Source availability gating, missing-data feedback and keyboard-aware filters.
+- [x] Verified lifecycle evidence, retained attempts and explicit fresh-release review.
+- [x] Compact Users management, idempotent observers and navigation investigation.
+- [x] Automated backend and Chromium ingress regression coverage.
+- [ ] Physical iPhone/WebKit, live HA upgrade/integration acceptance and image builds.
+- [ ] Future: weekly statistics, direct automatic retry and TV retry orchestration.
+
 ## v0.18.0
 
 Status: Feature release in review

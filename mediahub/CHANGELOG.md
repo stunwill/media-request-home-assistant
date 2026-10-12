@@ -1,3 +1,12 @@
+## 0.19.0
+
+- Compact mobile Downloads, full desktop table, stable identity attempt grouping and paginated sorting/filtering without deleting history.
+- Ratings availability checks, explicit partial/missing/error states and source coverage.
+- Full-screen keyboard-aware filters, scoped Browse persistence, compact Users management and observer-loop correction.
+- Accurate paused/transfer/import statuses, retained failed attempts, additive evidence and safe retry via fresh release review.
+- Explicit release eligibility/cancellation states, navigation diagnostics and expanded Chromium acceptance tests.
+- See docs/MOBILE_MANAGEMENT_V019.md for upgrade/manual acceptance and remaining risks. No automatic release tag or merge.
+
 ## 0.18.0
 
 - Multi-source ratings via optional MDBList/OMDb, separate RT critics/audience, background enrichment, source-aware status/health and secure configuration.

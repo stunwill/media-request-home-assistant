@@ -207,7 +207,7 @@ _DUAL_LOGIN_UI = r"""
       const user=dualLoginUsers.find(item=>item.id===card.dataset.userId);
       if(!user)return;
       const source=card.querySelector('.account-source');
-      if(source)source.textContent=dualLoginSourceLabel(user);
+      if(source&&source.textContent!==dualLoginSourceLabel(user))source.textContent=dualLoginSourceLabel(user);
       if(!user.home_assistant_identity)return;
       const controls=card.querySelector('.user-controls');
       if(!controls)return;
@@ -219,7 +219,8 @@ _DUAL_LOGIN_UI = r"""
         button.dataset.mediahubLogin='';
         controls.append(button);
       }
-      button.textContent=user.mediahub_login_enabled?'Reset MediaHub password':'Enable MediaHub login';
+      const label=user.mediahub_login_enabled?'Reset MediaHub password':'Enable MediaHub login';
+      if(button.textContent!==label)button.textContent=label;
       button.onclick=()=>openCredentialModal(user);
     });
   }

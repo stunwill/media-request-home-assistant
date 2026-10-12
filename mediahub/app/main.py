@@ -281,6 +281,8 @@ def initialise_database() -> None:
             "status_message": "TEXT",
             "download_started_at": "TEXT", "download_completed_at": "TEXT", "imported_at": "TEXT",
             "available_observed_at": "TEXT", "actual_size_bytes": "INTEGER", "progress_known": "INTEGER NOT NULL DEFAULT 0", "series_title": "TEXT",
+            "selected_release_quality": "TEXT", "selected_release_seeders": "INTEGER", "sent_at": "TEXT", "failure_json": "TEXT",
+            "selected_release_source": "TEXT", "selected_release_size_bytes": "INTEGER",
         }
         for name, definition in migrations.items():
             if name not in existing_columns:
@@ -1029,6 +1031,8 @@ def _download_status(queue_item: dict, torrent: dict | None) -> tuple[str, float
             return "processing", progress, "Radarr import needs attention"
         if progress >= 100:
             return "processing", progress, "Download complete, waiting for Radarr import"
+        if state.lower().startswith(('paused','stopped','queued','checking','meta','allocating')) or not progress and not float(torrent.get('dlspeed') or 0):
+            return "queued", progress, state or "Waiting for download activity"
         return "downloading", progress, state or "Downloading"
     size = float(queue_item.get("size") or 0)
     size_left = float(queue_item.get("sizeleft", queue_item.get("sizeLeft", size)))

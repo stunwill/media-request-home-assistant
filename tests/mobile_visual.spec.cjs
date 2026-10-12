@@ -16,6 +16,7 @@ for(const viewport of [{width:320,height:740},{width:375,height:812},{width:390,
    let body={};
    if(path.endsWith('users/me'))body={id:'stu',display_name:'Stuart',role:'admin',auth_source:'home_assistant'};
    else if(path.endsWith('/ratings'))body={ratings:{'123':matrix},configured:true};
+   else if(path.endsWith('/ratings/availability'))body={sources:Object.fromEntries(['tmdb','imdb','rt_critic','rt_audience','metacritic','letterboxd','trakt'].map(id=>[id,{enabled:true,verified_cached:10}]))};
    else if(path.includes('/genres'))body={genres:[{id:18,name:'Drama'},{id:99,name:'Documentary'}]};
    else if(path.includes('/discovery/')||/catalog\/movies\?/.test(route.request().url()))body={movies:Array.from({length:8},(_,i)=>({...movie,tmdb_id:123+i})),shows:[],page:1,total_pages:1,total_results:8};
    else if(path.endsWith('catalog/movies/123'))body=movie;
@@ -36,7 +37,7 @@ for(const viewport of [{width:320,height:740},{width:375,height:812},{width:390,
   const panel=app.locator('.mobile-filter-panel');await expect(panel).toBeVisible();
   await app.locator('#mobile-filter-fields').evaluate(el=>el.scrollTop=el.scrollHeight);
   const geometry=await panel.evaluate(el=>{const r=el.getBoundingClientRect(),actions=el.querySelector('.mobile-filter-actions').getBoundingClientRect();return {height:r.height,viewport:innerHeight,actionsBottom:actions.bottom,overflow:el.scrollWidth>el.clientWidth};});
-  expect(geometry.height).toBeLessThanOrEqual(geometry.viewport*0.91);
+  expect(geometry.height).toBeLessThanOrEqual(geometry.viewport);
   expect(geometry.actionsBottom).toBeLessThanOrEqual(geometry.viewport+1);
   expect(geometry.overflow).toBe(false);
   for(const [source,min,votes] of [['imdb','7.5','1000'],['rt_critic','85',null],['metacritic','75',null]]){
