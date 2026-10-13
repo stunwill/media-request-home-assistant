@@ -28,7 +28,7 @@ def run(coro):
 
 def test_final_route_and_capture_graph():
     route = next(r for r in watchlist_main.app.routes if r.path == '/api/movies/{tmdb_id}/releases')
-    assert watchlist_main.app.version == "0.19.0"
+    assert watchlist_main.app.version == "0.19.1"
     assert route.endpoint is feature_release.movie_releases
     assert route.dependant.call is feature_release.movie_releases
     assert release_identity_main._original_search_movie_releases is runtime.search_movie_releases
@@ -40,6 +40,8 @@ def test_prowlarr_sibling_timeouts_preserve_results_and_cancel(hung):
     async def scenario():
         cancelled = []
         async def fake_get(self, path, params=None):
+            if path=='/api/v1/indexer':
+                return httpx.Response(200,json=[],request=httpx.Request('GET','http://prowlarr.test/indexer'))
             kind = 'movie' if 'categories' in params else 'broad'
             if hung in {kind, 'both'}:
                 try:
@@ -94,7 +96,9 @@ def test_runtime_radarr_fallback_mapping_and_zero_results(kind):
                 assert cancelled == ['mapping']
             else:
                 _, releases, _ = await runtime.search_movie_releases(MOVIE['tmdb_id'], main.ReleaseRules(), 'test', movie=MOVIE)
-                assert len(releases) == (0 if kind == 'empty' else 1)
+                # Successful Radarr discovery no longer suppresses independent
+                # Prowlarr candidates. Thin fixtures cannot establish duplication.
+                assert len(releases) == (0 if kind == 'empty' else 2 if kind == 'radarr' else 1)
                 if kind == 'radarr_hang':
                     assert cancelled == ['radarr']
                     assert releases[0]['eligible']

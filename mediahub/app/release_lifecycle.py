@@ -345,9 +345,23 @@ async def release_search(
         }
     if manual_override:
         logger.info("manual override release search initiated tmdb_id=%s", tmdb_id)
-    result = await release_activity.movie_releases(tmdb_id, rules, principal, expanded=expanded)
+    from . import release_search_control
+    diagnostics = {}
+    token = release_search_control.discovery_diagnostics.set(diagnostics)
+    try:
+        result = await release_activity.movie_releases(tmdb_id, rules, principal, expanded=expanded)
+    finally:
+        release_search_control.discovery_diagnostics.reset(token)
     releases = list(result.get("releases") or [])
     eligible = [item for item in releases if item.get("eligible")]
+    diagnostics['eligible_releases'] = len(eligible)
+    diagnostics['displayed_releases'] = len(releases)
+    primary_counts = _structured_rejection_summary([item for item in releases if not item.get('eligible')])
+    diagnostics['household_exclusions'] = primary_counts.get('mediahub_policy',0)
+    diagnostics['compatibility_exclusions'] = sum(primary_counts.get(key,0) for key in ('arr','library_upgrade','other'))
+    diagnostics['displayed_metadata_exclusions'] = primary_counts.get('indexer_availability',0)
+    diagnostics['displayed_identity_exclusions'] = primary_counts.get('identity',0)
+    result['discovery_diagnostics'] = diagnostics
     if not releases:
         state = "no_indexer_results"
         message = "No matching releases were found from your configured sources."
@@ -364,6 +378,8 @@ async def release_search(
     result["lifecycle"] = lifecycle
     result["search_state"] = state
     result["search_message"] = message
+    if diagnostics.get('bounded') or diagnostics.get('failed_queries') or diagnostics.get('prowlarr_status') in {'timeout','provider_error'}:
+        result['search_message'] += ' Search coverage is partial; expand discovery diagnostics and refresh to retry.'
     return result
 
 
@@ -502,7 +518,7 @@ _RELEASE_LIFECYCLE_UI = r"""
   }
 
   function summaryLabel(category){return({identity:'Identity mismatch',library_upgrade:'Radarr / library state',arr:'Radarr',mediahub_policy:'MediaHub household preset',indexer_availability:'Release availability',other:'Other'})[category]||category.replaceAll('_',' ');}
-  function releaseSummary(data){const entries=Object.entries(data.rejection_summary||{});if(!entries.length)return '';return `<details class="release-summary-compact"><summary><strong>Why were releases excluded?</strong></summary>${entries.map(([category,count])=>`<div class="release-summary-row"><span>${esc(summaryLabel(category))}</span><strong>${count}</strong></div>`).join('')}</details>`;}
+  function releaseSummary(data){const entries=Object.entries(data.rejection_summary||{}),d=data.discovery_diagnostics;const policy=entries.length?`<details class="release-summary-compact"><summary><strong>Why were releases excluded?</strong></summary>${entries.map(([category,count])=>`<div class="release-summary-row"><span>${esc(summaryLabel(category))}</span><strong>${count}</strong></div>`).join('')}</details>`:'';if(!d)return policy;const counts=[['Radarr candidates',d.radarr_results],['Prowlarr raw response rows',d.raw_results],['Duplicate response rows removed',d.duplicates_removed],['Title/year mismatches',d.title_mismatches],['Category exclusions',d.category_exclusions],['Malformed response rows',d.metadata_exclusions],['Merged duplicates removed',d.merged_duplicates_removed||0],['Displayed identity exclusions',d.displayed_identity_exclusions],['Missing metadata / source mapping',d.displayed_metadata_exclusions],['Household preset exclusions',d.household_exclusions],['Compatibility / Radarr exclusions',d.compatibility_exclusions],['Eligible releases',d.eligible_releases],['Rows beyond processing budget',d.rows_not_processed],['Queries not started',d.queries_not_started]];return policy+`<details class="release-summary-compact discovery-diagnostics"><summary><strong>Release discovery diagnostics</strong></summary><p>${d.bounded?'Partial coverage: a time, page, provider or processing limit was reached.':'Bounded search completed; this is not a guarantee of every tracker release.'} Prowlarr: ${esc(d.prowlarr_status||'not searched')}. ${d.failed_queries||0} failed queries. ${d.indexers_configured==null?'Indexer capabilities unavailable':d.indexers_configured+' enabled searchable indexers configured'}; ${d.indexers_returned||0} indexers returned rows.</p>${counts.filter(([,value])=>value!=null).map(([label,value])=>`<div class="release-summary-row"><span>${esc(label)}</span><strong>${value}</strong></div>`).join('')}<details><summary>Queries executed (${(d.queries||[]).length})</summary>${(d.queries||[]).map(item=>`<p>${esc(item.query)} · ${esc(item.scope)} · categories ${esc((item.category_ids||[]).join(',')||'all')} · ${item.pages} pages · ${item.raw} rows · ${esc(item.outcome)}</p>`).join('')}</details><p>Counts describe processing stages; raw rows may repeat across queries. No tracker URLs or credentials are included.</p></details>`;}
   function releaseReason(release){const fallback=(release.policy_rejections||release.rejections||[]).map(message=>({message}));const primary=release.primary_rejection||fallback[0];if(!primary)return '';const extra=(release.rejection_details||fallback).filter(item=>item!==primary);return `<div class="release-primary-reason"><strong>${esc(release.rejection_label||'UNAVAILABLE')}</strong>${esc(primary.message||'Release unavailable')}${extra.length?`<details class="release-diagnostics"><summary>Details</summary>${extra.map(item=>`<div>${esc(item.message||'')}</div>`).join('')}</details>`:''}</div>`;}
 
   let releaseSearchGeneration=0;
@@ -548,6 +564,8 @@ _RELEASE_LIFECYCLE_UI = r"""
       const availableRows=available.map(release=>`<article class="release" data-eligible="true"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${Number(release.size_gb||0).toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div></div><button class="button primary" data-token="${esc(release.release_token||'')}">Download</button></article>`).join('');
       const unavailableRows=unavailable.map(release=>`<article class="release" data-eligible="false"><div><h4>${esc(release.title)}</h4><div class="release-meta"><span>${esc(release.indexer)}</span><span>${esc(release.quality)}</span><span>${Number(release.size_gb||0).toFixed(2)} GB</span><span>${release.seeders??'?'} seeders</span></div>${releaseReason(release)}</div><button class="button" disabled>${esc(release.rejection_label||'Unavailable')}</button></article>`).join('');
       area.innerHTML=`${rulesHtml(selectedRules)}<div class="heading"><div><h2>Available releases</h2><p>${esc(data.search_message||`${data.releases.length} results from your configured sources.`)}</p>${releaseSummary(data)}</div><button class="button" id="rerun-search">Refresh releases</button></div><div class="releases">${availableRows||(!unavailableRows?`<div class="empty">${esc(data.search_message||'No releases were returned.')}</div>`:'')}</div>${unavailableRows?`<details class="unavailable-releases"><summary>Unavailable releases (${unavailable.length})</summary><div class="releases">${unavailableRows}</div></details>`:''}`;
+      const diagnostics=area.querySelector('.discovery-diagnostics');
+      if(diagnostics)area.querySelector('.heading').after(diagnostics);
       document.getElementById('rerun-search').addEventListener('click',()=>findReleases(manualOverride));
       focusReleaseArea(area,search.automatic);
       area.querySelectorAll('[data-token]').forEach(button=>button.addEventListener('click',()=>submitRequest(button.dataset.token,button)));

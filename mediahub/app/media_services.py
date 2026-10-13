@@ -285,7 +285,7 @@ class TmdbClient:
     async def details(self, tmdb_id: int) -> dict[str, Any]:
         payload = await self._get(
             f"/movie/{tmdb_id}",
-            {"append_to_response": "credits,videos,external_ids,release_dates"},
+            {"append_to_response": "credits,videos,external_ids,release_dates,alternative_titles"},
         )
         movie = normalise_movie(payload)
         regional_dates: dict[str, list[dict[str, Any]]] = {}
@@ -322,6 +322,8 @@ class TmdbClient:
         movie.update(
             {
                 "runtime_minutes": payload.get("runtime"),
+                "alternative_titles": [item for item in (payload.get('alternative_titles') or {}).get('titles', [])
+                                       if isinstance(item, dict) and item.get('title')],
                 "status": str(payload.get("status") or ""),
                 "certification": certification or None,
                 "genres": [
