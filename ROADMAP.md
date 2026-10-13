@@ -1,3 +1,12 @@
+## v0.19.1
+
+Status: Focused corrective release in review
+
+- [x] Reproduced and corrected two-stage Birdman short-title loss.
+- [x] Bounded capability-aware Prowlarr queries/pagination and safe diagnostics.
+- [x] Strict identity, preset and direct-handoff regression coverage.
+- [ ] Live household Birdman discovery and optional explicit download acceptance.
+
 ## v0.19.0
 
 Status: Feature/corrective release in review

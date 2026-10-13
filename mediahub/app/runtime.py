@@ -103,30 +103,9 @@ def _movie_year(movie: dict[str, Any]) -> str:
 
 
 def _matches_movie(release_title: Any, movie: dict[str, Any]) -> bool:
-    """Reject obvious franchise/title-year mismatches from a broad text search."""
-    candidate_text = str(release_title or "")
-    candidate_words = set(_normalised_words(candidate_text))
-    if not candidate_words:
-        return False
-
-    variants = [movie.get("title"), movie.get("original_title")]
-    variant_matches = False
-    for variant in variants:
-        words = _normalised_words(variant)
-        if not words:
-            continue
-        required = min(len(words), 2)
-        if sum(word in candidate_words for word in words) >= required:
-            variant_matches = True
-            break
-    if not variant_matches:
-        return False
-
-    year = _movie_year(movie)
-    candidate_years = set(re.findall(r"\b(?:19|20)\d{2}\b", candidate_text))
-    if year and candidate_years and year not in candidate_years:
-        return False
-    return True
+    from .release_identity import validate_movie_release
+    identity = {**movie, 'year': _movie_year(movie)}
+    return validate_movie_release(identity, {'title': release_title}).eligible
 
 
 def _quality_from_title(title: Any) -> str:
@@ -162,86 +141,13 @@ def _is_low_quality(release: dict[str, Any]) -> bool:
 
 
 def _movie_search_terms(movie: dict[str, Any]) -> list[str]:
-    year = _movie_year(movie)
-    variants: list[str] = []
-    for value in (movie.get("title"), movie.get("original_title")):
-        title = str(value or "").strip()
-        if title and title.casefold() not in {item.casefold() for item in variants}:
-            variants.append(title)
-
-    terms: list[str] = []
-    for title in variants:
-        if year:
-            terms.append(f"{title} {year}")
-        terms.append(title)
-    return terms
+    from .prowlarr_discovery import terms
+    return terms(movie)
 
 
 async def _prowlarr_search(movie: dict[str, Any]) -> list[dict[str, Any]]:
-    """Bound each independent query, retaining sibling results after a timeout."""
-    options = await asyncio.to_thread(main.load_options)
-    integrations = options.get("integrations", {}) if isinstance(options, dict) else {}
-    url = str(integrations.get("prowlarr_url") or "").rstrip("/")
-    api_key = str(integrations.get("prowlarr_api_key") or "").strip()
-    terms = _movie_search_terms(movie)
-    if not url or not api_key or not terms:
-        return []
-
-    async def fetch(client, params):
-        provider = 'prowlarr_movie' if 'categories' in params else 'prowlarr_broad'
-        async def request():
-            response = await client.get("/api/v1/search", params=params)
-            if response.status_code == 400:
-                return []
-            response.raise_for_status()
-            payload = response.json()
-            return payload[:100] if isinstance(payload, list) else []
-        try:
-            payload = await search_control.stage(provider, movie.get('tmdb_id'), request())
-            return True, payload, None
-        except (httpx.HTTPError, ValueError, TimeoutError) as error:
-            return False, [], error
-
-    async with httpx.AsyncClient(
-        base_url=url, timeout=httpx.Timeout(6, connect=3, pool=3),
-        headers={"X-Api-Key": api_key, "User-Agent": "MediaHub/0.16.15"},
-    ) as client:
-        tasks = [asyncio.create_task(fetch(client, params)) for term in terms for params in (
-            {"query": term, "type": "movie", "categories": 2000, "limit": 100},
-            {"query": term, "limit": 100},
-        )]
-        try:
-            responses = await asyncio.gather(*tasks)
-        finally:
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)  # cleanup only
-
-    results = []
-    seen = set()
-    successful_request = False
-    errors = []
-    for ok, payload, error in responses:
-        successful_request |= ok
-        if isinstance(error, httpx.HTTPStatusError) and error.response.status_code in {401, 403}:
-            raise HTTPException(status_code=503, detail="Prowlarr credentials were rejected. Check Setup.") from error
-        if error is not None:
-            errors.append(error)
-        for item in payload:
-            if not isinstance(item, dict) or not _matches_movie(item.get("title"), movie):
-                continue
-            key = (int(item.get("indexerId") or item.get("indexer_id") or 0), str(item.get("guid") or item.get("downloadUrl") or item.get("title") or ""))
-            if key not in seen:
-                seen.add(key)
-                results.append(item)
-    if not successful_request and errors:
-        if all(isinstance(error, (TimeoutError, httpx.TimeoutException)) for error in errors):
-            raise search_control.timeout_error()
-        raise HTTPException(status_code=502, detail="Prowlarr fallback search is unavailable. Check Setup.")
-    search_control.logger.info('release_search tmdb_id=%s provider=prowlarr outcome=%s result_count=%s failed_paths=%s fallback=true',
-                               movie.get('tmdb_id'), 'partial' if errors else 'success', len(results), len(errors))
-    return results
+    from .prowlarr_discovery import search
+    return await search(movie)
 
 
 async def _radarr_indexers(radarr: Any) -> list[dict[str, Any]]:
@@ -280,7 +186,7 @@ def _normalise_prowlarr_release(
 ) -> dict[str, Any]:
     try:
         size_bytes = int(item.get("size") or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         size_bytes = 0
     try:
         prowlarr_indexer_id = int(item.get("indexerId") or 0)
@@ -288,8 +194,14 @@ def _normalise_prowlarr_release(
         prowlarr_indexer_id = 0
 
     title = str(item.get("title") or "Untitled release")
+    try:
+        age_hours = round(float(item.get('ageHours') or 0),1)
+    except (TypeError,ValueError,OverflowError):
+        age_hours = 0
     return {
         "source": "prowlarr_direct",
+        "imdb_id": item.get('imdbId') or item.get('imdb_id'),
+        "tmdb_id": item.get('tmdbId') or item.get('tmdb_id'),
         "guid": str(item.get("guid") or ""),
         "indexer_id": radarr_indexer_id,
         "prowlarr_indexer_id": prowlarr_indexer_id,
@@ -297,10 +209,10 @@ def _normalise_prowlarr_release(
         "title": title,
         "quality": _quality_from_title(title),
         "size_bytes": size_bytes,
-        "size_gb": round(size_bytes / (1024**3), 2),
-        "seeders": item.get("seeders"),
+        "size_gb": size_bytes / (1024**3),
+        "seeders": int(item['seeders']) if str(item.get('seeders') if item.get('seeders') is not None else '').isdigit() else None,
         "leechers": item.get("leechers"),
-        "age_hours": round(float(item.get("ageHours") or 0), 1),
+        "age_hours": age_hours,
         "publish_date": item.get("publishDate"),
         "approved": True,
         "download_allowed": True,
@@ -352,12 +264,16 @@ def _prowlarr_policy(
         ):
             rejections.append("MediaHub requires a 720p or 1080p release, or a supported recent-release fallback")
         result["quality_warning"] = (
-            "Found directly through Prowlarr because Radarr's movie search returned no releases."
+            "Found through supplementary Prowlarr discovery. Radarr still validates and manages acquisition."
         )
 
-    if not size_gb or size_gb > rules.maximum_size_gb:
+    if size_gb <= 0:
+        rejections.append('Release size is unavailable')
+    elif size_gb > rules.maximum_size_gb:
         rejections.append(f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit")
-    if seeders is None or int(seeders) < rules.minimum_seeders:
+    if seeders is None:
+        rejections.append('Seeder count is unavailable')
+    elif int(seeders) < rules.minimum_seeders:
         rejections.append(f"Release has fewer than {rules.minimum_seeders} seeders")
 
     result["policy_rejections"] = list(dict.fromkeys(rejections))
@@ -412,14 +328,17 @@ async def _search_movie_releases(
             # results. Re-read/ensure the movie under a separate short budget.
             radarr_movie = await search_control.stage('radarr_ensure', tmdb_id, radarr.ensure_movie(tmdb_id), 3)
             releases = []
-        if any(item.get("eligible") for item in releases):
-            # Already-completed configuration failures remain visible.
-            if prowlarr_task.done() and not prowlarr_task.cancelled():
-                error = prowlarr_task.exception()
-                if isinstance(error, HTTPException) and error.status_code == 503:
-                    raise error
-            return radarr_movie, releases, fallback_active
-        raw_results = await prowlarr_task
+        trace = search_control.discovery_diagnostics.get()
+        if trace is not None:
+            trace['radarr_results'] = len(releases)
+        try:
+            raw_results = await prowlarr_task
+        except HTTPException as error:
+            if not releases or error.status_code == 503:
+                raise
+            if trace is not None:
+                trace['prowlarr_status'] = 'timeout' if error.status_code == 504 else 'provider_error'
+            raw_results = []
         if not raw_results:
             return radarr_movie, releases, fallback_active
         radarr_indexers = await search_control.stage(
@@ -442,7 +361,8 @@ async def _search_movie_releases(
             rules,
             allow_low_quality=allow_low_quality,
         )
-        public["release_token"] = main.cache_release(tmdb_id, user_id, release)
+        if public['eligible']:
+            public["release_token"] = main.cache_release(tmdb_id, user_id, release)
         public_results.append(public)
 
     public_results.sort(
@@ -456,10 +376,19 @@ async def _search_movie_releases(
     deduplicated = []
     seen = set()
     for item in public_results:
-        key = (str(item.get('title') or '').casefold(), str(item.get('indexer') or '').casefold())
+        cached = main.release_cache.get(item.get('release_token'))
+        raw = cached[3] if cached else item
+        # Stable IDs distinguish distinct releases sharing a title. Fallback
+        # fingerprints include size/quality; never deduplicate by title alone.
+        identifier = raw.get('info_hash') or raw.get('guid')
+        key = (str(item.get('indexer') or '').casefold(), str(identifier)) if identifier else (
+            str(item.get('title') or '').casefold(), str(item.get('indexer') or '').casefold(),
+            item.get('size_gb'), item.get('quality'))
         if key not in seen:
             seen.add(key)
             deduplicated.append(item)
+        elif search_control.discovery_diagnostics.get() is not None:
+            trace['merged_duplicates_removed'] = trace.get('merged_duplicates_removed', 0) + 1
     return radarr_movie, deduplicated, any(item.get("eligible") for item in deduplicated)
 
 

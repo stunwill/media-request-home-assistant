@@ -1,3 +1,10 @@
+## 0.19.1
+
+- Fix short-title Birdman (2014) candidates disappearing before preset evaluation; use shared identity checks with exact-year alias boundaries.
+- Bounded official/alternative/short/identifier Prowlarr searches, capability categories, pagination and explicit partial-coverage diagnostics.
+- Preserve the three qualifying x265/10-bit fixtures, exclude unrelated titles, retain strict household presets and existing Radarr-managed handoff.
+- No database/configuration migration required. See docs/BIRDMAN_DISCOVERY_V0191.md for findings and live acceptance.
+
 ## 0.19.0
 
 - Compact mobile Downloads, full desktop table, stable identity attempt grouping and paginated sorting/filtering without deleting history.

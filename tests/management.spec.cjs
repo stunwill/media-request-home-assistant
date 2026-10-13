@@ -73,3 +73,14 @@ test('Keyboard reduced viewport and rejected releases stay usable',async({page})
  await expect(app.locator('.release-state-summary')).toContainText('0 eligible · 1 rejected');await app.locator('.unavailable-releases summary').click();await expect(app.locator('.unavailable-releases')).toContainText('Exceeds maximum size');
  await app.locator('#close-modal').click();expect(errors).toEqual([]);expect(page.url()).toBe('http://mediahub.test/host');
 });
+
+test('Birdman eligible releases and safe discovery diagnostics on iPhone',async({page})=>{
+ const {app,errors}=await fixture(page,{width:390,height:844});
+ await page.route('**/catalog/movies/123',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({...movie,title:'Birdman or (The Unexpected Virtue of Ignorance)',year:'2014'})}));
+ const releases=[['Birdman 2014 1080p BluRay x265',1.8,74],['Birdman 2014 1080p BluRay x265-LAMA',1.8,13],['Birdman 2014 1080p BluRay DDP5.1 x265 10bit-LAMA',2.7,31]].map(([title,size_gb,seeders],i)=>({title,size_gb,seeders,eligible:true,quality:'1080p',indexer:'Fixture',release_token:'opaque-'+i}));
+ await page.route('**/movies/123/releases**',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({releases,search_message:'3 qualifying releases found.',discovery_diagnostics:{raw_results:3,title_mismatches:0,category_exclusions:0,metadata_exclusions:0,duplicates_removed:0,household_exclusions:0,eligible_releases:3,indexers_returned:1,queries:[{query:'Birdman 2014',scope:'broad',category_ids:[],pages:1,raw:3,outcome:'success'}],prowlarr_status:'success'}})}));
+ await app.locator('[data-id="123"]').click();await expect(app.locator('#release-area [data-eligible="true"]')).toHaveCount(3);await expect(app.locator('#auto-request')).toBeEnabled();
+ await app.locator('.discovery-diagnostics>summary').click();await app.locator('.discovery-diagnostics details>summary').click();await expect(app.locator('.discovery-diagnostics')).toContainText('Birdman 2014');await expect(app.locator('.discovery-diagnostics')).toContainText('Eligible releases');
+ expect(await app.locator('#detail').evaluate(el=>el.scrollWidth>el.clientWidth)).toBe(false);
+ await page.screenshot({path:'test-results/screenshots/birdman-discovery-390x844.png'});await app.locator('#close-modal').click();expect(errors).toEqual([]);
+});

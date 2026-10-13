@@ -1,3 +1,15 @@
+## [0.19.1] - 2026-10-13
+
+### Fixed
+- Birdman short-title releases were discarded twice: preliminary word overlap and final full-title prefix checks. Shared identity validation now accepts grammatical/authoritative aliases with immediate exact years, while rejecting conflicting IDs and TV titles.
+- Search official/original/alternative/short titles and a supported identifier using bounded deterministic queries; retain Prowlarr candidates even when Radarr already has eligible results.
+- Remove silent first-100 slicing; honor provider page limits, bound pagination/concurrency and report partial coverage or repeated/unsupported pages.
+- Use Prowlarr normalized capability categories plus a broad fallback; preserve Movie/TV identity checks and exact byte-based binary-size limits.
+
+### Added
+- Expandable safe query/row/duplicate/identity/category/metadata/preset/eligibility diagnostics and deterministic Birdman regression fixtures.
+- iPhone release-list and diagnostics regression test. No schema, credentials, presets or acquisition workflow changes.
+
 ## [0.19.0] - 2026-10-13
 
 ### Added

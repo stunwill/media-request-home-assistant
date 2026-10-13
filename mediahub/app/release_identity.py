@@ -79,6 +79,12 @@ def _movie_titles(movie: dict[str, Any]) -> list[str]:
         value = str(item.get("title") if isinstance(item, dict) else item or "").strip()
         if value:
             values.append(value)
+    # Grammatical alternate title, not arbitrary first-word/fuzzy truncation.
+    # Example: Birdman or (The Unexpected Virtue of Ignorance).
+    for title in list(values):
+        match = re.fullmatch(r'(.+?)\s+or\s+\(.+\)', title, flags=re.I)
+        if match and match[1].strip():
+            values.append(match[1].strip())
     return list(dict.fromkeys(values))
 
 
@@ -199,6 +205,11 @@ def with_rejection_details(
 
 
 def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> IdentityResult:
+    for movie_key,release_keys in [('imdb_id',('imdbId','imdb_id')),('tmdb_id',('tmdbId','tmdb_id'))]:
+        expected = str(movie.get(movie_key) or '').removeprefix('tt').lstrip('0')
+        returned = next((str(release[key]).removeprefix('tt').lstrip('0') for key in release_keys if release.get(key)), '')
+        if expected and returned and expected != returned:
+            return IdentityResult('rejected',0,('Conflicting authoritative movie identifier',))
     raw = str(release.get("title") or "")
     if not raw:
         return IdentityResult("rejected", 0, ("Release title is unavailable",))
@@ -213,6 +224,13 @@ def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> Id
     best_score = 0
     for candidate in candidates:
         matched, score = _title_prefix_match(raw, candidate)
+        official = [normalise_title(movie.get(key) or '') for key in ('title','original_title')]
+        alias = normalise_title(candidate) not in official
+        if matched and alias:
+            # Short aliases require an immediately following exact release year;
+            # "Birdman of Alcatraz" is never accepted as the Birdman alias.
+            year = str(movie.get('year') or str(movie.get('release_date') or '')[:4])
+            matched = bool(year.isdigit() and re.match(r'^'+re.escape(normalise_title(candidate))+r'\s+'+re.escape(year)+r'\b',normalise_title(raw)))
         if matched and score > best_score:
             best_title, best_score = candidate, score
     if best_title is None:
