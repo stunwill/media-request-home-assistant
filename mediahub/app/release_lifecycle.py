@@ -345,7 +345,7 @@ async def release_search(
         }
     if manual_override:
         logger.info("manual override release search initiated tmdb_id=%s", tmdb_id)
-    from . import release_search_control
+    from . import release_search_control, release_identity
     diagnostics = {}
     token = release_search_control.discovery_diagnostics.set(diagnostics)
     try:
@@ -361,7 +361,20 @@ async def release_search(
     diagnostics['compatibility_exclusions'] = sum(primary_counts.get(key,0) for key in ('arr','library_upgrade','other'))
     diagnostics['displayed_metadata_exclusions'] = primary_counts.get('indexer_availability',0)
     diagnostics['displayed_identity_exclusions'] = primary_counts.get('identity',0)
-    result['discovery_diagnostics'] = diagnostics
+    # Filtering details are safe allowlisted snapshots, restricted server-side.
+    for sample in diagnostics.get('release_exclusions',[]):
+        if sample['status'] == 'excluded':
+            continue
+        public=next((item for item in releases if item.get('title')==sample.get('release') and
+                     item.get('indexer')==sample.get('source')),None)
+        if public:
+            sample['status']='eligible' if public.get('eligible') else 'excluded'
+            sample['reasons']=[value for reason in public.get('policy_rejections') or []
+                               if (value := release_identity._safe_diagnostic(reason))]
+    if principal.role == 'admin':
+        result['discovery_diagnostics'] = diagnostics
+    else:
+        result.pop('discovery_diagnostics',None)
     if not releases:
         state = "no_indexer_results"
         message = "No matching releases were found from your configured sources."
@@ -378,8 +391,22 @@ async def release_search(
     result["lifecycle"] = lifecycle
     result["search_state"] = state
     result["search_message"] = message
-    if diagnostics.get('bounded') or diagnostics.get('failed_queries') or diagnostics.get('prowlarr_status') in {'timeout','provider_error'}:
-        result['search_message'] += ' Search coverage is partial; expand discovery diagnostics and refresh to retry.'
+    incomplete = (diagnostics.get('bounded') or diagnostics.get('failed_queries') or
+                  diagnostics.get('queries_not_started') or diagnostics.get('radarr_status') in {'timeout','provider_error'} or
+                  diagnostics.get('prowlarr_status') in {'partial','timeout','provider_error'})
+    if incomplete:
+        unavailable = not diagnostics.get('raw_results') and not releases and diagnostics.get('failed_queries')
+        result['search_status'] = 'indexer_unavailable' if unavailable else 'partial'
+        result['search_state'] = 'partial_results'
+        result['search_message'] = ('Indexer unavailable. Search could not be completed. Retry search.' if unavailable else
+                                    f"Partial results. {len(eligible)} eligible releases found so far. Search coverage is incomplete; refresh to retry.")
+    else:
+        matching = any(item.get('match_state') != 'rejected' for item in releases)
+        result['search_status'] = 'complete' if eligible else 'no_eligible' if matching else 'no_matching'
+        result['search_message'] = ('Search complete. '+message if eligible else
+                                   'No eligible releases. All matching releases were rejected by the configured rules.' if matching else
+                                   'No matching releases. The completed search found no matching movie identity within documented coverage.')
+    result['search_complete'] = not bool(incomplete)
     return result
 
 
@@ -518,7 +545,7 @@ _RELEASE_LIFECYCLE_UI = r"""
   }
 
   function summaryLabel(category){return({identity:'Identity mismatch',library_upgrade:'Radarr / library state',arr:'Radarr',mediahub_policy:'MediaHub household preset',indexer_availability:'Release availability',other:'Other'})[category]||category.replaceAll('_',' ');}
-  function releaseSummary(data){const entries=Object.entries(data.rejection_summary||{}),d=data.discovery_diagnostics;const policy=entries.length?`<details class="release-summary-compact"><summary><strong>Why were releases excluded?</strong></summary>${entries.map(([category,count])=>`<div class="release-summary-row"><span>${esc(summaryLabel(category))}</span><strong>${count}</strong></div>`).join('')}</details>`:'';if(!d)return policy;const counts=[['Radarr candidates',d.radarr_results],['Prowlarr raw response rows',d.raw_results],['Duplicate response rows removed',d.duplicates_removed],['Title/year mismatches',d.title_mismatches],['Category exclusions',d.category_exclusions],['Malformed response rows',d.metadata_exclusions],['Merged duplicates removed',d.merged_duplicates_removed||0],['Displayed identity exclusions',d.displayed_identity_exclusions],['Missing metadata / source mapping',d.displayed_metadata_exclusions],['Household preset exclusions',d.household_exclusions],['Compatibility / Radarr exclusions',d.compatibility_exclusions],['Eligible releases',d.eligible_releases],['Rows beyond processing budget',d.rows_not_processed],['Queries not started',d.queries_not_started]];return policy+`<details class="release-summary-compact discovery-diagnostics"><summary><strong>Release discovery diagnostics</strong></summary><p>${d.bounded?'Partial coverage: a time, page, provider or processing limit was reached.':'Bounded search completed; this is not a guarantee of every tracker release.'} Prowlarr: ${esc(d.prowlarr_status||'not searched')}. ${d.failed_queries||0} failed queries. ${d.indexers_configured==null?'Indexer capabilities unavailable':d.indexers_configured+' enabled searchable indexers configured'}; ${d.indexers_returned||0} indexers returned rows.</p>${counts.filter(([,value])=>value!=null).map(([label,value])=>`<div class="release-summary-row"><span>${esc(label)}</span><strong>${value}</strong></div>`).join('')}<details><summary>Queries executed (${(d.queries||[]).length})</summary>${(d.queries||[]).map(item=>`<p>${esc(item.query)} · ${esc(item.scope)} · categories ${esc((item.category_ids||[]).join(',')||'all')} · ${item.pages} pages · ${item.raw} rows · ${esc(item.outcome)}</p>`).join('')}</details><p>Counts describe processing stages; raw rows may repeat across queries. No tracker URLs or credentials are included.</p></details>`;}
+  function releaseSummary(data){const entries=Object.entries(data.rejection_summary||{}),d=data.discovery_diagnostics;const policy=entries.length?`<details class="release-summary-compact"><summary><strong>Why were releases excluded?</strong></summary>${entries.map(([category,count])=>`<div class="release-summary-row"><span>${esc(summaryLabel(category))}</span><strong>${count}</strong></div>`).join('')}</details>`:'';if(!d)return policy;const counts=[['Radarr candidates',d.radarr_results],['Prowlarr raw response rows',d.raw_results],['Duplicate response rows removed',d.duplicates_removed],['Title/year mismatches',d.title_mismatches],['Category exclusions',d.category_exclusions],['Malformed response rows',d.metadata_exclusions],['Merged duplicates removed',d.merged_duplicates_removed||0],['Displayed identity exclusions',d.displayed_identity_exclusions],['Missing metadata / source mapping',d.displayed_metadata_exclusions],['Household preset exclusions',d.household_exclusions],['Compatibility / Radarr exclusions',d.compatibility_exclusions],['Eligible releases',d.eligible_releases],['Rows beyond processing budget',d.rows_not_processed],['Queries not started',d.queries_not_started]];return policy+`<details class="release-summary-compact discovery-diagnostics"><summary><strong>Release discovery diagnostics</strong></summary><p>${data.search_complete===false||d.bounded||d.failed_queries?'Partial coverage: a time, page, provider or processing limit was reached.':'Bounded search completed; this is not a guarantee of every tracker release.'} Prowlarr: ${esc(d.prowlarr_status||'not searched')}. ${d.failed_queries||0} failed queries. ${d.indexers_configured==null?'Indexer capabilities unavailable':d.indexers_configured+' enabled searchable indexers configured'}; ${d.indexers_returned||0} indexers returned rows.</p>${counts.filter(([,value])=>value!=null).map(([label,value])=>`<div class="release-summary-row"><span>${esc(label)}</span><strong>${value}</strong></div>`).join('')}<details><summary>Query plan (${(d.queries||[]).length})</summary>${(d.queries||[]).map(item=>`<p>${esc(item.query)} · ${esc(item.scope)} · categories ${esc((item.category_ids||[]).join(',')||'all')} · ${item.pages} pages · ${item.raw} rows · ${esc(item.outcome)} · ${item.elapsed_ms||0} ms · ${item.attempts??0} attempts</p>`).join('')}</details><details><summary>Individual release filtering (${(d.release_exclusions||[]).length})</summary>${(d.release_exclusions||[]).map(item=>`<p><strong>${esc(item.release||'[redacted]')}</strong><br>${esc(item.source||'Unknown source')} · ${esc((item.category||[]).map(c=>c.name||c.id).join(', '))} · ${esc(item.quality)} · ${item.size_bytes==null?'Unknown size':(item.size_bytes/1024**3).toFixed(2)+' GB'} · ${item.seeders??'Unknown'} seeders<br>Identity: ${esc(item.identity)} · ${esc(item.status)} · ${esc((item.reasons||[]).join('; '))}</p>`).join('')}${d.diagnostic_rows_omitted?`<p>${d.diagnostic_rows_omitted} additional rows omitted from the bounded diagnostic sample.</p>`:''}</details><p>Counts describe processing stages; raw rows may repeat across queries. No tracker URLs or credentials are included.</p></details>`;}
   function releaseReason(release){const fallback=(release.policy_rejections||release.rejections||[]).map(message=>({message}));const primary=release.primary_rejection||fallback[0];if(!primary)return '';const extra=(release.rejection_details||fallback).filter(item=>item!==primary);return `<div class="release-primary-reason"><strong>${esc(release.rejection_label||'UNAVAILABLE')}</strong>${esc(primary.message||'Release unavailable')}${extra.length?`<details class="release-diagnostics"><summary>Details</summary>${extra.map(item=>`<div>${esc(item.message||'')}</div>`).join('')}</details>`:''}</div>`;}
 
   let releaseSearchGeneration=0;
@@ -558,6 +585,8 @@ _RELEASE_LIFECYCLE_UI = r"""
       if(data.search_state==='deferred_upcoming'){
         finish('NO_RESULTS');area.innerHTML=`<div class="empty">${esc(data.search_message)}</div>`;return;
       }
+      area.dataset.discoveryStatus=data.search_status||'';
+      area.dataset.discoveryMessage=data.search_status?(data.search_message||''):'';
       finish((data.releases||[]).length?'SUCCESS':'NO_RESULTS');
       const available=(data.releases||[]).filter(release=>release.eligible);
       const unavailable=(data.releases||[]).filter(release=>!release.eligible);

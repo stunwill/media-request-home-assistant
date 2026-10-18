@@ -6,7 +6,7 @@ from . import main, download_management, ratings_store
 from .mobile_management_ui import UI
 
 app = main.app
-app.version = '0.19.1'
+app.version = '0.19.2'
 app.add_event_handler('startup', download_management.initialise)
 app.add_api_route('/api/download-management', download_management.listing, methods=['GET'])
 app.add_api_route('/api/download-management/{request_id}/attempts', download_management.attempts, methods=['GET'])

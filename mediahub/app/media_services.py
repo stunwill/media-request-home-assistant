@@ -566,6 +566,8 @@ class RadarrClient:
 
     @staticmethod
     def normalise_release(item: dict[str, Any]) -> dict[str, Any]:
+        from .release_identity import seeder_count
+
         size_bytes = int(item.get("size") or 0)
         rejections = [str(value) for value in (item.get("rejections") or [])]
         raw_flags = item.get("indexerFlags") or []
@@ -573,12 +575,14 @@ class RadarrClient:
         return {
             "guid": str(item.get("guid") or ""),
             "indexer_id": int(item.get("indexerId") or 0),
+            "imdb_id": item.get("imdbId") or item.get("imdb_id"),
+            "tmdb_id": item.get("tmdbId") or item.get("tmdb_id"),
             "indexer": str(item.get("indexer") or "Unknown indexer"),
             "title": str(item.get("title") or "Untitled release"),
             "quality": _quality_name(item),
             "size_bytes": size_bytes,
             "size_gb": round(size_bytes / (1024**3), 2),
-            "seeders": item.get("seeders"),
+            "seeders": seeder_count(item.get("seeders")),
             "leechers": item.get("leechers"),
             "age_hours": round(float(item.get("ageHours") or 0), 1),
             "publish_date": item.get("publishDate"),

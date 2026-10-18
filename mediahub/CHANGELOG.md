@@ -1,3 +1,12 @@
+## 0.19.2
+
+- Include capability-mapped documentary categories for documentary movies, preserving strict movie identity and household presets.
+- Reject longer unrelated titles sharing a short title prefix. A one-year difference requires a matching authoritative movie identifier.
+- Prioritize canonical queries; bound query paths to 6 seconds within a 12-second discovery window, four concurrent paths and two transient retries. Report incomplete coverage explicitly.
+- Preserve complete duplicate observations and distinct size/quality variants; distinguish unknown seeders from confirmed zero.
+- Restrict detailed, redacted query and release filtering diagnostics to administrators. Do not cache partial movie searches.
+- Retain Birdman aliases, exact cached-release handoff and existing movie/TV acquisition paths. No live IPTorrents verification is claimed.
+
 ## 0.19.1
 
 - Fix short-title Birdman (2014) candidates disappearing before preset evaluation; use shared identity checks with exact-year alias boundaries.

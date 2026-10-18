@@ -155,7 +155,7 @@ async def cached_discovery(key, operation, force):
                 raise HTTPException(504,'Release search timed out. Retry search.')
             finally:
                 release_search_control.discovery_only.reset(discovery_token)
-            if result.get('releases'):
+            if result.get('releases') and result.get('search_complete',True):
                 _release_cache[key] = (monotonic()+120, result)
             return result
     finally:
@@ -168,7 +168,7 @@ async def cached_discovery(key, operation, force):
 def discovery_key(kind, identifier, principal, flags):
     options = main.load_options()
     digest = hashlib.sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()
-    return (kind, identifier, principal.user_id, digest, flags)
+    return (kind, identifier, principal.user_id, principal.role, digest, flags)
 
 
 async def movie_releases(tmdb_id: int, rules: main.ReleaseRules, principal: main.CurrentUser, request: Request,

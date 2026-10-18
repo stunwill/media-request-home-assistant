@@ -16,7 +16,7 @@ MediaHub is a Home Assistant add-on for searching, requesting, tracking, and man
 
 ## Project status
 
-The current corrective release in review is `0.19.1`, based on merged `0.19.0`. It fixes Birdman short-title discovery, adds bounded capability-aware Prowlarr queries/pagination and safe processing diagnostics, while retaining existing presets and Radarr-managed download handoff. See [investigation, limitations and live acceptance](docs/BIRDMAN_DISCOVERY_V0191.md), [mobile management](docs/MOBILE_MANAGEMENT_V019.md), and [ratings provider configuration](docs/RATINGS_DISCOVERY_V018.md).
+The current corrective release in review is `0.19.2`, based on merged `0.19.1`. It corrects documentary category discovery, short-title movie identity, duplicate observations and partial-search feedback. Household presets and Radarr-managed handoff remain unchanged. See [investigation, limitations and live acceptance](docs/DOCUMENTARY_DISCOVERY_V0192.md), [Birdman discovery](docs/BIRDMAN_DISCOVERY_V0191.md), [mobile management](docs/MOBILE_MANAGEMENT_V019.md), and [ratings provider configuration](docs/RATINGS_DISCOVERY_V018.md).
 
 ## Release and policy architecture
 

@@ -52,6 +52,14 @@ class IdentityResult:
         return self.state in {"strong", "acceptable"}
 
 
+def seeder_count(value):
+    """Unknown, negative, fractional or malformed counts never mean confirmed zero."""
+    if isinstance(value,bool):
+        return None
+    text=str(value).strip() if value is not None else ''
+    return int(text) if text.isascii() and text.isdigit() and len(text)<=10 else None
+
+
 def normalise_title(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(ch for ch in text if not unicodedata.combining(ch)).casefold()
@@ -107,7 +115,7 @@ def _safe_diagnostic(value: Any) -> str | None:
     lowered = text.casefold()
     sensitive_markers = (
         "api key", "apikey", "api_key", "token", "password", "credential", "magnet:",
-        "downloadurl", "download url", "guid", "http://", "https://",
+        "downloadurl", "download url", "guid", "passkey", "cookie", "authorization", "secret", "http://", "https://",
     )
     return None if any(marker in lowered for marker in sensitive_markers) else text[:500]
 
@@ -205,9 +213,12 @@ def with_rejection_details(
 
 
 def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> IdentityResult:
+    authoritative_match = False
     for movie_key,release_keys in [('imdb_id',('imdbId','imdb_id')),('tmdb_id',('tmdbId','tmdb_id'))]:
         expected = str(movie.get(movie_key) or '').removeprefix('tt').lstrip('0')
         returned = next((str(release[key]).removeprefix('tt').lstrip('0') for key in release_keys if release.get(key)), '')
+        if expected and returned and expected == returned:
+            authoritative_match = True
         if expected and returned and expected != returned:
             return IdentityResult('rejected',0,('Conflicting authoritative movie identifier',))
     raw = str(release.get("title") or "")
@@ -224,6 +235,11 @@ def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> Id
     best_score = 0
     for candidate in candidates:
         matched, score = _title_prefix_match(raw, candidate)
+        # A matching prefix must end at release metadata, never extra title words.
+        normal_candidate = normalise_title(candidate)
+        tail = normalise_title(raw)[len(normal_candidate):].strip().split()
+        boundary = not tail or bool(_YEAR_PATTERN.fullmatch(tail[0])) or tail[0] in _RELEASE_MARKERS
+        matched = matched and boundary
         official = [normalise_title(movie.get(key) or '') for key in ('title','original_title')]
         alias = normalise_title(candidate) not in official
         if matched and alias:
@@ -236,8 +252,11 @@ def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> Id
     if best_title is None:
         return IdentityResult("rejected", best_score, ("Does not match requested movie title",))
 
-    requested_year = int(movie.get("year") or 0) if str(movie.get("year") or "").isdigit() else None
-    release_year = _release_year(raw)
+    year_text = str(movie.get("year") or str(movie.get("release_date") or "")[:4])
+    requested_year = int(year_text) if year_text.isdigit() else None
+    # Ignore a year which belongs to the movie's actual title (e.g. 1917).
+    tail = normalise_title(raw)[len(normalise_title(best_title)):].strip()
+    release_year = _release_year(tail)
     reasons = ["Strong title match"]
     score = best_score
     if requested_year and release_year:
@@ -245,10 +264,10 @@ def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> Id
         if delta == 0:
             score += 20
             reasons.append("Release year matches")
-        elif delta == 1:
+        elif delta == 1 and authoritative_match:
             score += 10
-            reasons.append("Year within accepted range")
-        elif delta >= 2:
+            reasons.append("Year difference verified by authoritative movie identifier")
+        else:
             return IdentityResult("rejected", max(0, score - 35), ("Conflicting release year",), best_title, release_year)
     state: Literal["strong", "acceptable", "suspicious", "rejected"] = "strong" if score >= 105 else "acceptable"
     return IdentityResult(state, score, tuple(reasons), best_title, release_year)

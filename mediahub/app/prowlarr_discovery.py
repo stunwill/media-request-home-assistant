@@ -14,7 +14,10 @@ from . import main, release_identity as identity, release_search_control as cont
 MAX_PAGES = 3
 PAGE_SIZE = 100
 MAX_ROWS = 2400
-SEARCH_SECONDS = 8
+SEARCH_SECONDS = 12
+QUERY_SECONDS = 6
+MAX_RETRIES = 2
+MAX_DIAGNOSTIC_ROWS = 100
 _capability_cache = {}
 
 
@@ -27,7 +30,7 @@ def terms(movie):
     regional = [str(item.get('title') or '').strip() for item in movie.get('alternative_titles') or []
                 if isinstance(item,dict) and item.get('iso_3166_1') in {'AU','US','GB'}]
     chosen = []
-    for value in [*short,*originals,*regional,*variants]:
+    for value in [*originals,*short,*regional,*variants]:
         if value and value.casefold() not in {item.casefold() for item in chosen}:
             chosen.append(value)
     if official and official not in chosen[:3]:
@@ -51,20 +54,64 @@ def categories(items):
     return values
 
 
-def movie_categories(indexers):
+def documentary(movie):
+    return any((isinstance(item,dict) and (item.get('id') == 99 or
+               'documentary' in str(item.get('name') or '').casefold())) or
+               item == 99 or str(item).casefold() == 'documentary'
+               for item in movie.get('genres') or movie.get('genre_ids') or [])
+
+
+def documentary_category(category):
+    # Names come from Prowlarr capability/response mappings, not tracker-local IDs.
+    return bool(re.search(r'\bdocumentar(?:y|ies)\b', str(category.get('name') or ''), re.I))
+
+
+def movie_categories(indexers, movie=None):
     return sorted({int(category['id']) for indexer in indexers for category in categories((indexer.get('capabilities') or {}).get('categories'))
                    if str(category.get('id') or '').isdigit() and
-                   (2000<=int(category['id'])<3000 or str(category.get('name') or '').lower().startswith('movies'))})
+                   (2000<=int(category['id'])<3000 or str(category.get('name') or '').lower().startswith('movies')
+                    or documentary(movie or {}) and documentary_category(category))})
 
 
-def movie_category_rejected(item):
+def movie_category_rejected(item, movie=None, indexers=()):
     known=categories(item.get('categories'))
+    # Some responses omit names. Resolve only in the returning indexer's mapping.
+    source = [indexer for indexer in indexers if str(indexer.get('id')) == str(item.get('indexerId'))]
+    mapped = {str(c.get('id')): c for indexer in source
+              for c in categories((indexer.get('capabilities') or {}).get('categories'))}
+    known = [{**mapped.get(str(c.get('id')), {}), **{k:v for k,v in c.items() if v is not None}} for c in known]
     if not known:
-        return False  # Identity, not missing category metadata, decides.
+        return False  # Missing mappings use broad retrieval plus strict movie identity.
+    if documentary(movie or {}) and any(documentary_category(c) for c in known):
+        return False  # Episode/season patterns still fail the identity gate.
     if any(2000<=int(c.get('id') or 0)<3000 or str(c.get('name') or '').lower().startswith('movies') for c in known if str(c.get('id') or '0').isdigit()):
         return False
     return any(str(c.get('name') or '').lower().startswith(('tv','audio','books','xxx')) or
                3000<=int(c.get('id') or 0)<8000 for c in known if str(c.get('id') or '0').isdigit())
+
+
+def observation_score(item, movie, indexes):
+    seeders = identity.seeder_count(item.get('seeders'))
+    try:
+        size = int(item.get('size') or 0)
+    except (TypeError, ValueError, OverflowError):
+        size = 0
+    return (not movie_category_rejected(item,movie,indexes),
+            identity.validate_movie_release(movie,item).eligible,
+            size > 0 and seeders is not None,
+            seeders if seeders is not None else -1, size > 0,
+            bool(item.get('downloadUrl') or item.get('magnetUrl')))
+
+
+def diagnostic_row(item, match, reason):
+    safe = identity._safe_diagnostic
+    return {'release':safe(item.get('title')), 'source':safe(item.get('indexer') or item.get('indexerName')),
+            'category':[{'id':c.get('id') if str(c.get('id') or '').isdigit() else None,
+                         'name':safe(c.get('name'))} for c in categories(item.get('categories'))[:12]],
+            'quality':next((value for value in ('2160p','1080p','720p') if value in str(item.get('title') or '').lower()),'Unknown'),
+            'size_bytes':item.get('size') if isinstance(item.get('size'),(int,float)) else None,
+            'seeders':identity.seeder_count(item.get('seeders')), 'identity':match.state,
+            'status':'excluded' if reason else 'candidate', 'reasons':[reason] if reason else []}
 
 
 def release_key(item):
@@ -84,7 +131,7 @@ async def capabilities(client,url,key,trace):
             response=await client.get('/api/v1/indexer',params={})
             response.raise_for_status()
             payload=response.json()
-        indexes=[{name:item.get(name) for name in ('id','enable','supportsSearch','supportsPagination','capabilities')}
+        indexes=[{name:item.get(name) for name in ('id','name','enable','supportsSearch','supportsPagination','capabilities')}
                  for item in payload if isinstance(item,dict) and 'capabilities' in item and item.get('enable') and item.get('supportsSearch',True)] if isinstance(payload,list) else []
         if len(_capability_cache)>32:
             _capability_cache.clear()
@@ -111,37 +158,62 @@ async def search(movie):
     if not url or not key:
         trace['prowlarr_status']='not_configured'
         return []
-    results=[];seen=set();indexer_ids=set();errors=[];successes=0
+    results=[];observations={};indexer_ids=set();errors=[];successes=0
+    started=monotonic();retry_budget=MAX_RETRIES
     semaphore=asyncio.Semaphore(4)
     async with httpx.AsyncClient(base_url=url,timeout=httpx.Timeout(6,connect=3,pool=3),
-                                headers={'X-Api-Key':key,'User-Agent':'MediaHub/0.19.1'}) as client:
+                                headers={'X-Api-Key':key,'User-Agent':'MediaHub/0.19.2'}) as client:
         indexes=await capabilities(client,url,key,trace)
         trace['indexers_configured']=len(indexes) if indexes else None
-        cats=movie_categories(indexes) or [2000]  # Prowlarr's normalized parent, never a tracker-local ID.
+        cats=movie_categories(indexes,movie) or [2000]  # Prowlarr's normalized parent, never a tracker-local ID.
         paginating=any(item.get('supportsPagination') for item in indexes) if indexes else True
         limits=[int((item.get('capabilities') or {}).get('limitsMax')) for item in indexes
                 if str((item.get('capabilities') or {}).get('limitsMax') or '').isdigit() and int(item['capabilities']['limitsMax'])>0]
         page_size=min([PAGE_SIZE,*limits])
-        queries=[params for term in terms(movie) for params in ({'query':term,'type':'movie','categories':cats},{'query':term})]
+        search_terms=terms(movie)
+        # Year-bearing canonical/verified aliases precede redundant yearless variants.
+        year=str(movie.get('year') or str(movie.get('release_date') or '')[:4])
+        search_terms=sorted(search_terms,key=lambda term: not (year.isdigit() and term.endswith(' '+year)))
+        queries=[params for term in search_terms for params in ({'query':term,'type':'movie','categories':cats},{'query':term})]
         for name,field in [('imdbid','imdb_id'),('tmdbid','tmdb_id')]:
             supported=[item['id'] for item in indexes if name in {str(value).lower() for value in (item.get('capabilities') or {}).get('movieSearchParams') or []}]
             value=movie.get(field)
             if supported and value and (name!='imdbid' or re.fullmatch(r'tt\d+',str(value))):
                 queries.append({'query':'{'+name+':'+str(value)+'}','type':'movie','categories':cats,'indexerIds':supported})
                 break  # One supported identifier lookup, not redundant ID fan-out.
-        async def query(params):
-            nonlocal successes
+        trace['planned_queries']=len(queries)
+        trace['alternative_titles']=[identity._safe_diagnostic(value) for value in identity._movie_titles(movie)][:20]
+        trace['indexers_requested']=[{'id':item['id'],'name':identity._safe_diagnostic(item.get('name'))} for item in indexes]
+        # Register the whole plan before scheduling, including paths never started.
+        entries=[{'query':identity._safe_diagnostic(params['query']),'scope':'movie_categories' if 'categories' in params else 'broad',
+                  'category_ids':params.get('categories',[]),'pages':0,'raw':0,'outcome':'not_started',
+                  'elapsed_ms':0,'attempts':0,
+                  'requested_indexer_count':len(params.get('indexerIds') or indexes) if indexes else None} for params in queries]
+        trace['queries']=entries
+        async def query(params,entry,priority):
+            nonlocal successes,retry_budget
             async with semaphore:
-                entry={'query':params['query'],'scope':'movie_categories' if 'categories' in params else 'broad',
-                       'category_ids':params.get('categories',[]),'pages':0,'raw':0,'outcome':'searching',
-                       'requested_indexer_count':len(params.get('indexerIds') or indexes) if indexes else None}
-                trace['queries'].append(entry)
+                query_started=monotonic()
+                entry['outcome']='searching'
                 try:
-                    async with asyncio.timeout(control.PROVIDER_SECONDS):
+                    async with asyncio.timeout(QUERY_SECONDS):
                         previous=None
                         for page in range(MAX_PAGES):
-                            response=await client.get('/api/v1/search',params={**params,'limit':page_size,'offset':page*page_size})
-                            response.raise_for_status();payload=response.json()
+                            request_params={**params,'limit':page_size,'offset':page*page_size}
+                            while True:
+                                entry['attempts']+=1
+                                try:
+                                    response=await client.get('/api/v1/search',params=request_params)
+                                    response.raise_for_status()
+                                    break
+                                except (httpx.TransportError,httpx.HTTPStatusError) as error:
+                                    transient = not isinstance(error,httpx.HTTPStatusError) or error.response.status_code in {502,503,504}
+                                    # Never immediately retry 429 or authentication failures.
+                                    if not transient or priority>=4 or retry_budget<=0:
+                                        raise
+                                    retry_budget-=1
+                                    await asyncio.sleep(0.1)
+                            payload=response.json()
                             if not isinstance(payload,list):
                                 raise ValueError('Invalid search response')
                             successes+=1;entry['pages']+=1;entry['raw']+=len(payload);trace['raw_results']+=len(payload)
@@ -157,14 +229,21 @@ async def search(movie):
                                 if item.get('indexerId') is not None:
                                     indexer_ids.add(str(item['indexerId']))
                                 marker=release_key(item)
-                                if marker in seen:
-                                    trace['duplicates_removed']+=1;continue
-                                seen.add(marker)
-                                if movie_category_rejected(item):
-                                    trace['category_exclusions']+=1;continue
-                                if not identity.validate_movie_release(movie,item).eligible:
-                                    trace['title_mismatches']+=1;continue
-                                results.append(item)
+                                prior=observations.get(marker)
+                                if prior is not None and (
+                                    identity.normalise_title(prior.get('title')) != identity.normalise_title(item.get('title')) or
+                                    prior.get('size') and item.get('size') and str(prior['size']) != str(item['size'])):
+                                    # Conflicting title/size observations are not interchangeable releases.
+                                    marker=(marker,identity.normalise_title(item.get('title')),str(item.get('size')))
+                                    prior=observations.get(marker)
+                                if prior is not None:
+                                    trace['duplicates_removed']+=1
+                                    # Select a complete observation; never splice title/size/IDs
+                                    # from conflicting records to manufacture an eligible one.
+                                    if observation_score(item,movie,indexes)>observation_score(prior,movie,indexes):
+                                        observations[marker]=item
+                                else:
+                                    observations[marker]=item
                             if len(payload)<page_size:
                                 break
                             if not paginating or signature==previous or page==MAX_PAGES-1 or trace['raw_results']>=MAX_ROWS:
@@ -176,7 +255,9 @@ async def search(movie):
                     entry['outcome']='timeout' if isinstance(error,(TimeoutError,httpx.TimeoutException)) else 'provider_error'
                 except asyncio.CancelledError:
                     entry['outcome']='cancelled';raise
-        tasks=[asyncio.create_task(query(params)) for params in queries]
+                finally:
+                    entry['elapsed_ms']=round((monotonic()-query_started)*1000)
+        tasks=[asyncio.create_task(query(params,entry,priority)) for priority,(params,entry) in enumerate(zip(queries,entries))]
         try:
             _,pending=await asyncio.wait(tasks,timeout=SEARCH_SECONDS)
             if pending:
@@ -187,7 +268,22 @@ async def search(movie):
                     task.cancel()
             await asyncio.gather(*tasks,return_exceptions=True)
     trace['indexers_returned']=len(indexer_ids)
-    trace['queries_not_started']=len(queries)-len(trace['queries'])
+    trace['queries_not_started']=sum(entry['outcome']=='not_started' for entry in entries)
+    trace['elapsed_ms']=round((monotonic()-started)*1000)
+    trace['retries']=MAX_RETRIES-retry_budget
+    trace['release_exclusions']=[]
+    for item in observations.values():
+        match=identity.validate_movie_release(movie,item)
+        reason=None
+        if movie_category_rejected(item,movie,indexes):
+            trace['category_exclusions']+=1;reason='Unsupported category'
+        elif not match.eligible:
+            trace['title_mismatches']+=1;reason='; '.join(match.reasons)
+        else:
+            results.append(item)
+        if len(trace['release_exclusions'])<MAX_DIAGNOSTIC_ROWS:
+            trace['release_exclusions'].append(diagnostic_row(item,match,reason))
+    trace['diagnostic_rows_omitted']=max(0,len(observations)-MAX_DIAGNOSTIC_ROWS)
     trace['prowlarr_status']='partial' if errors or trace['bounded'] else 'success'
     if any(isinstance(error,httpx.HTTPStatusError) and error.response.status_code in {401,403} for error in errors):
         raise HTTPException(503,'Prowlarr credentials were rejected. Check Setup.')

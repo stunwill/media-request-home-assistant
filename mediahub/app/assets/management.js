@@ -134,9 +134,9 @@
     const excluded=area.querySelectorAll('[data-eligible="false"]').length;
     if(button){button.disabled=stage!=='SUCCESS'||!eligible;button.title=button.disabled?'Wait for an eligible release, or refresh the search.':'Request the best currently eligible release';}
     if(stage==='SUCCESS'||stage==='NO_RESULTS'){
-      const value=eligible?'RESULTS':excluded?'NONE_ELIGIBLE':'NO_RESULTS';area.dataset.outcome=value;
+      const value=area.dataset.discoveryStatus==='partial'||area.dataset.discoveryStatus==='indexer_unavailable'?'PARTIAL':eligible?'RESULTS':excluded?'NONE_ELIGIBLE':'NO_RESULTS';area.dataset.outcome=value;
       let summary=area.querySelector('.release-state-summary');if(!summary){summary=document.createElement('div');summary.className='release-state-summary';summary.setAttribute('role','status');area.prepend(summary);}
-      const text=`${eligible} eligible · ${excluded} rejected${!eligible?(excluded?' — Releases found, but none meet the requirements.':' — No releases were returned.'):''}`;
+      const text=area.dataset.discoveryMessage||`${eligible} eligible · ${excluded} rejected${!eligible?(excluded?' (Releases found, but none meet the requirements.)':' (No releases were returned.)'):''}`;
       if(summary.textContent!==text)summary.textContent=text;
       const best=area.querySelector('[data-eligible="true"]');if(best&&!best.querySelector('.best-badge'))best.insertAdjacentHTML('afterbegin','<span class="best-badge">BEST MATCH</span>');
     }
