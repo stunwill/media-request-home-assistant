@@ -193,6 +193,8 @@ def _normalise_prowlarr_release(
     except (TypeError, ValueError):
         prowlarr_indexer_id = 0
 
+    from .release_identity import seeder_count
+
     title = str(item.get("title") or "Untitled release")
     try:
         age_hours = round(float(item.get('ageHours') or 0),1)
@@ -200,6 +202,7 @@ def _normalise_prowlarr_release(
         age_hours = 0
     return {
         "source": "prowlarr_direct",
+        "categories": item.get("categories") or [],
         "imdb_id": item.get('imdbId') or item.get('imdb_id'),
         "tmdb_id": item.get('tmdbId') or item.get('tmdb_id'),
         "guid": str(item.get("guid") or ""),
@@ -210,7 +213,7 @@ def _normalise_prowlarr_release(
         "quality": _quality_from_title(title),
         "size_bytes": size_bytes,
         "size_gb": size_bytes / (1024**3),
-        "seeders": int(item['seeders']) if str(item.get('seeders') if item.get('seeders') is not None else '').isdigit() else None,
+        "seeders": seeder_count(item.get("seeders")),
         "leechers": item.get("leechers"),
         "age_hours": age_hours,
         "publish_date": item.get("publishDate"),
@@ -324,6 +327,9 @@ async def _search_movie_releases(
         except (TimeoutError, HTTPException) as error:
             if isinstance(error, HTTPException) and "timed out" not in str(error.detail).lower():
                 raise
+            trace = search_control.discovery_diagnostics.get()
+            if trace is not None:
+                trace['radarr_status']='timeout'
             # A slow interactive search must not discard independent Prowlarr
             # results. Re-read/ensure the movie under a separate short budget.
             radarr_movie = await search_control.stage('radarr_ensure', tmdb_id, radarr.ensure_movie(tmdb_id), 3)
@@ -381,7 +387,8 @@ async def _search_movie_releases(
         # Stable IDs distinguish distinct releases sharing a title. Fallback
         # fingerprints include size/quality; never deduplicate by title alone.
         identifier = raw.get('info_hash') or raw.get('guid')
-        key = (str(item.get('indexer') or '').casefold(), str(identifier)) if identifier else (
+        key = (str(item.get('indexer') or '').casefold(), str(identifier),
+               str(item.get('title') or '').casefold(), item.get('size_gb'), item.get('quality')) if identifier else (
             str(item.get('title') or '').casefold(), str(item.get('indexer') or '').casefold(),
             item.get('size_gb'), item.get('quality'))
         if key not in seen:

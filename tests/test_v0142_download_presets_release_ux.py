@@ -222,7 +222,7 @@ def test_legacy_standalone_tv_setup_ui_is_not_active() -> None:
 
 def test_deployed_entrypoint_contains_unified_download_presets_ui() -> None:
     html = main.INDEX_HTML
-    assert mobile_ux_ui.app.version == "0.19.1"
+    assert mobile_ux_ui.app.version == "0.19.2"
     for marker in (
         "Download Presets",
         "Maximum Movie release size (GB)",
@@ -290,8 +290,8 @@ def test_dog_stars_and_buffalo_soldiers_regressions_remain_protected() -> None:
         {"title": "Krypto The Superdog S01E22 Bathound Meets The Dog Stars 720p WEB-DL"},
     )
     tolerated = release_identity.validate_movie_release(
-        {"title": "Buffalo Soldiers", "year": "2002"},
-        {"title": "Buffalo Soldiers 2001 1080p BluRay x265"},
+        {"title": "Buffalo Soldiers", "year": "2002", "imdb_id":"tt0252299"},
+        {"title": "Buffalo Soldiers 2001 1080p BluRay x265", "imdbId":"tt0252299"},
     )
     assert bad.eligible is False
     assert tolerated.eligible is True

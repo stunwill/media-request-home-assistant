@@ -1,3 +1,12 @@
+## v0.19.2
+Status: Corrective release prepared for review, not published.
+
+- [x] Documentary capability mapping and strict short-title movie identity.
+- [x] Explicit partial coverage, bounded retries and cancellation-safe query diagnostics.
+- [x] Preserve release observations and unknown seeder metadata; administrator-only diagnostics.
+- [x] Deterministic Daniel/Beyond Utopia tests and existing Birdman protection.
+- [ ] Live Home Assistant/Prowlarr/IPTorrents verification after approved merge and installation.
+
 ## v0.19.1
 
 Status: Focused corrective release in review
