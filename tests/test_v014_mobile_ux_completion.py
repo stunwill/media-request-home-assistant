@@ -9,7 +9,7 @@ def _mobile_layer(html: str) -> str:
 
 
 def test_v014_version_and_entrypoint_markers() -> None:
-    assert mobile_ux_ui.app.version == "0.19.2"
+    assert mobile_ux_ui.app.version == "0.19.3"
     html = main.INDEX_HTML
     for marker in (
         "MEDIAHUB_MOBILE_UX_V0142",

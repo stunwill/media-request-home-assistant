@@ -330,10 +330,10 @@ _RELEASE_ACTIVITY_UI = r"""
     const area=document.getElementById('release-area');
     if(!area)return;
     const releases=[...area.querySelectorAll('.release')];
-    releases.forEach(item=>item.classList.toggle('rejected-release',!!item.querySelector('button[disabled]')));
+    releases.forEach(item=>item.classList.toggle('rejected-release',item.dataset.eligible==='false'));
     if(area.querySelector('.release-divider'))return;
-    const firstRejected=releases.find(item=>item.querySelector('button[disabled]'));
-    const hasDownloadable=releases.some(item=>item.querySelector('button:not([disabled])'));
+    const firstRejected=releases.find(item=>item.dataset.eligible==='false');
+    const hasDownloadable=releases.some(item=>item.dataset.eligible==='true');
     if(firstRejected&&hasDownloadable){
       const divider=document.createElement('div');
       divider.className='release-divider';

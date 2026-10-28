@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import re
+import uuid
 from time import monotonic
 
 from fastapi import Query, Request
@@ -76,6 +78,14 @@ async def request_movie(
 ):
     from . import runtime
 
+    supplied = getattr(request, "headers", {}).get("X-MediaHub-Correlation-ID", "")
+    correlation = supplied if re.fullmatch(r"[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", supplied) else uuid.uuid4().hex
+    started = monotonic()
+    status = None
+    outcome = "started"
+    control.logger.info("movie_submission correlation=%s tmdb_id=%s selection=%s event=started",
+                        correlation, tmdb_id, "exact" if payload.release_token else "best")
+
     async def submit():
         try:
             # Includes preset loading and the entire shared request lifecycle.
@@ -85,7 +95,21 @@ async def request_movie(
             from fastapi import HTTPException
             raise HTTPException(status_code=504, detail="Radarr release submission timed out. Check Downloads before trying again.") from error
 
-    return await _until_disconnected(submit(), request, tmdb_id, "release_handoff")
+    try:
+        result = await _until_disconnected(submit(), request, tmdb_id, "release_handoff")
+        status = 200
+        outcome = "completed"
+        return result
+    except asyncio.CancelledError:
+        outcome = "cancelled_unconfirmed"
+        raise
+    except Exception as error:
+        status = getattr(error, "status_code", 500)
+        outcome = "timeout_unconfirmed" if status == 504 else "rejected" if status < 500 else "backend_unconfirmed"
+        raise
+    finally:
+        control.logger.info("movie_submission correlation=%s tmdb_id=%s outcome=%s http_status=%s elapsed_ms=%s cleanup=complete",
+                            correlation, tmdb_id, outcome, status, round((monotonic()-started)*1000))
 
 
 # Preset imports captured enhanced_main.request_movie, not the runtime route
