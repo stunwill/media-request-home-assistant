@@ -36,7 +36,7 @@ _MOBILE_UI = r"""
   function compactReleaseArea(){
     const area=document.getElementById('release-area');if(!area)return;
     const releases=[...area.querySelectorAll('.release')];
-    const eligible=releases.filter(el=>el.dataset.eligible==='true'&&!el.querySelector('button[disabled]'));
+    const eligible=releases.filter(el=>el.dataset.eligible==='true');
     const best=eligible[0];
     releases.forEach(el=>{
       if(el!==best){el.classList.remove('best-match');el.querySelector('.best-badge')?.remove();}

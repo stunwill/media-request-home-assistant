@@ -222,7 +222,7 @@ def test_legacy_standalone_tv_setup_ui_is_not_active() -> None:
 
 def test_deployed_entrypoint_contains_unified_download_presets_ui() -> None:
     html = main.INDEX_HTML
-    assert mobile_ux_ui.app.version == "0.19.2"
+    assert mobile_ux_ui.app.version == "0.19.3"
     for marker in (
         "Download Presets",
         "Maximum Movie release size (GB)",
@@ -280,7 +280,8 @@ def test_unavailable_releases_are_collapsed_and_have_meaningful_labels() -> None
 
 def test_best_match_only_uses_explicitly_eligible_release_cards() -> None:
     html = main.INDEX_HTML
-    assert "el.dataset.eligible==='true'&&!el.querySelector('button[disabled]')" in html
+    assert "el.dataset.eligible==='true'" in html
+    assert "el.dataset.eligible==='true'&&!el.querySelector('button[disabled]')" not in html
     assert "BEST MATCH" in html
 
 

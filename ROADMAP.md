@@ -1,3 +1,11 @@
+## v0.19.3
+Status: Corrective release prepared for review, not published.
+
+- [x] Reproduce the release badge mutation loop before correction; preserve eligibility during submission.
+- [x] Immediate Download feedback, safe recovery, bounded timeout and navigation cleanup.
+- [x] Privacy-safe correlation diagnostics and Chromium/WebKit ingress regression coverage.
+- [ ] Physical iPhone Safari/Home Assistant, live integration and add-on update discovery verification after approved merge.
+
 ## v0.19.2
 Status: Corrective release prepared for review, not published.
 

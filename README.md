@@ -2,6 +2,8 @@
 
 MediaHub is a Home Assistant add-on for searching, requesting, tracking, and managing movies and TV shows through a family-friendly interface.
 
+Current corrective version: **0.19.3**. See [release interaction investigation and iPhone acceptance](docs/RELEASE_INTERACTION_V0193.md). This branch is prepared for review; Home Assistant update availability has not been verified.
+
 ## Current capabilities
 
 - Home Assistant Ingress and standalone MediaHub login

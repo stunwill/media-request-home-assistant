@@ -1,3 +1,11 @@
+## 0.19.3
+
+- Fix a reproduced BEST MATCH observer loop that froze rendering, Download feedback and navigation after a release button became disabled. Eligibility now stays independent of request processing and one decorator owns the badge.
+- Show immediate accessible processing, inline recovery and correlated errors; reject unconfirmed or storage-rejected responses instead of displaying false success.
+- Bound movie submission to 22 seconds, cancel obsolete UI work on navigation and fence uncertain outcomes until explicit Downloads review and fresh discovery. Never automatically retry acquisition.
+- Add privacy-safe correlation logs and real Chromium/WebKit ingress regressions for touch, scrolling, navigation, timeout, duplicate taps and late responses.
+- Preserve household presets, authenticated user-bound exact-release tokens and Radarr/Sonarr/Prowlarr handoffs. Physical iPhone/Home Assistant acceptance and update discovery remain manual.
+
 ## 0.19.2
 
 - Include capability-mapped documentary categories for documentary movies, preserving strict movie identity and household presets.

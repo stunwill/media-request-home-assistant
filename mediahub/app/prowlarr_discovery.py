@@ -162,7 +162,7 @@ async def search(movie):
     started=monotonic();retry_budget=MAX_RETRIES
     semaphore=asyncio.Semaphore(4)
     async with httpx.AsyncClient(base_url=url,timeout=httpx.Timeout(6,connect=3,pool=3),
-                                headers={'X-Api-Key':key,'User-Agent':'MediaHub/0.19.2'}) as client:
+                                headers={'X-Api-Key':key,'User-Agent':'MediaHub/0.19.3'}) as client:
         indexes=await capabilities(client,url,key,trace)
         trace['indexers_configured']=len(indexes) if indexes else None
         cats=movie_categories(indexes,movie) or [2000]  # Prowlarr's normalized parent, never a tracker-local ID.

@@ -111,7 +111,7 @@ def test_effective_request_route_and_capture_graph():
     assert route.endpoint is feature_release.request_movie and route.dependant.call is feature_release.request_movie
     assert preset_main._original_request_movie is runtime.request_movie
     assert runtime._original_request_movie is enhanced_main.request_movie
-    assert watchlist_main.app.version == '0.19.2'
+    assert watchlist_main.app.version == '0.19.3'
 
 
 def test_donut_discovery_to_exact_radarr_push_and_shared_lifecycle(setup):
