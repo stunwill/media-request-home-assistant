@@ -58,6 +58,22 @@ function terminal(area,status){assert.equal(area.dataset.searchState,status);ass
   let job=start();await wait(5);assert(releaseScrolls>job.beforeScrolls,'Choose a release must scroll the dialog to the release area');const resultScrolls=releaseScrolls;job.request.resolve({releases:[release],search_message:'1 qualifying release found.'});await job.promise;await wait(30);
   assert(releaseScrolls>resultScrolls,'Rendered release results must remain anchored in the release area');terminal(job.area,'SUCCESS');assert.equal(job.area.querySelectorAll('.best-badge').length,1);
   const observer=new win.MutationObserver(list=>{changes+=list.length;});let changes=0;observer.observe(job.area,{subtree:true,childList:true});await wait(40);assert.equal(changes,0);observer.disconnect();assert.equal(deadlines.size,0);
+  // Identity evidence remains distinct from final household eligibility in ingress.
+  job=start();job.request.resolve({releases:[release],search_complete:false,discovery_diagnostics:{
+    prowlarr_status:'partial',failed_queries:1,final_unique_candidates:2,
+    final_candidate_counts:{eligible:1,mediahub_policy:1},release_exclusions:[
+      {release:'The Killing of Two Lovers 2020 1080p',identity:'accepted',identity_confidence:100,
+       identity_evidence:['Strong title match','Alternate release year (2020 vs 2021)'],
+       selected_movie_year:2021,torrent_release_year:2020,year_tolerated:true,
+       status:'excluded',reasons:['Exceeds 3 GB Movie limit']},
+      {release:'Uncertain movie',identity:'uncertain',identity_confidence:65,
+       identity_evidence:['Year differs by 2','Additional verification required'],
+       selected_movie_year:2021,torrent_release_year:2019,year_tolerated:false,status:'excluded'}]}});
+  await job.promise;const diagnosticText=job.area.querySelector('.discovery-diagnostics').textContent;
+  for(const text of ['Identity: accepted','Strong title match','Alternate release year (2020 vs 2021)',
+    'Selected year: 2021','Torrent year: 2020','Year difference tolerated: Yes',
+    'Final eligibility: excluded','Exceeds 3 GB Movie limit','Identity: uncertain',
+    'Additional verification required','Partial coverage','Final decisions per unique candidate'])assert(diagnosticText.includes(text),text);
   // Zero releases.
   job=start();job.request.resolve({releases:[],search_message:'No matching releases.'});await job.promise;terminal(job.area,'NO_RESULTS');
   // Final browser deadline must abort even if fetch ignores abort and never settles.

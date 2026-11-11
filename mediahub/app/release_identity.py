@@ -46,6 +46,12 @@ class IdentityResult:
     reasons: tuple[str, ...]
     matched_title: str | None = None
     release_year: int | None = None
+    selected_year: int | None = None
+    year_tolerated: bool = False
+
+    @property
+    def status(self) -> str:
+        return "accepted" if self.eligible else "uncertain" if self.state == "suspicious" else "rejected"
 
     @property
     def eligible(self) -> bool:
@@ -63,7 +69,8 @@ def seeder_count(value):
 def normalise_title(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(ch for ch in text if not unicodedata.combining(ch)).casefold()
-    text = re.sub(r"[._'’`\-]+", " ", text)
+    text = re.sub(r"['’`]", "", text)
+    text = re.sub(r"[._\-]+", " ", text)
     text = re.sub(r"[^a-z0-9 ]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -212,65 +219,101 @@ def with_rejection_details(
     return result
 
 
+def movie_year_evidence(movie: dict[str, Any]) -> dict[int, str]:
+    """Use selected-movie metadata only, never years asserted by a torrent."""
+    years = {}
+    for key in ("production_year", "premiere_date", "theatrical_release_date",
+                "digital_release_date", "release_date"):
+        value = str(movie.get(key) or "")[:4]
+        if value.isdigit() and 1800 <= int(value) <= 2199:
+            years[int(value)] = key.replace("_", " ")
+    dates = movie.get("release_dates") or {}
+    if isinstance(dates, dict):
+        labels = {1: "premiere", 2: "limited theatrical", 3: "theatrical", 4: "digital", 5: "physical", 6: "TV"}
+        for region, records in dates.items():
+            if not isinstance(records, list):
+                continue
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                value = str(record.get("release_date") or "")[:4]
+                if value.isdigit() and 1800 <= int(value) <= 2199:
+                    years[int(value)] = f"TMDb {region} {labels.get(record.get('type'), 'release')} date"
+    return years
+
+
+def _identifier(value: Any) -> str:
+    text = str(value or "").strip().lower().removeprefix("tt")
+    return text.lstrip("0") if text.isascii() and text.isdigit() else ""
+
+
 def validate_movie_release(movie: dict[str, Any], release: dict[str, Any]) -> IdentityResult:
-    authoritative_match = False
-    for movie_key,release_keys in [('imdb_id',('imdbId','imdb_id')),('tmdb_id',('tmdbId','tmdb_id'))]:
-        expected = str(movie.get(movie_key) or '').removeprefix('tt').lstrip('0')
-        returned = next((str(release[key]).removeprefix('tt').lstrip('0') for key in release_keys if release.get(key)), '')
-        if expected and returned and expected == returned:
-            authoritative_match = True
-        if expected and returned and expected != returned:
-            return IdentityResult('rejected',0,('Conflicting authoritative movie identifier',))
     raw = str(release.get("title") or "")
-    if not raw:
-        return IdentityResult("rejected", 0, ("Release title is unavailable",))
-    lowered = normalise_title(raw)
-    if any(pattern.search(lowered) for pattern in _TV_EPISODE_PATTERNS):
-        return IdentityResult("rejected", 0, ("Appears to be a TV episode",))
-    if any(pattern.search(lowered) for pattern in _TV_SEASON_PATTERNS):
-        return IdentityResult("rejected", 5, ("Appears to be a TV season release",))
-
-    candidates = _movie_titles(movie)
-    best_title: str | None = None
-    best_score = 0
-    for candidate in candidates:
-        matched, score = _title_prefix_match(raw, candidate)
-        # A matching prefix must end at release metadata, never extra title words.
-        normal_candidate = normalise_title(candidate)
-        tail = normalise_title(raw)[len(normal_candidate):].strip().split()
-        boundary = not tail or bool(_YEAR_PATTERN.fullmatch(tail[0])) or tail[0] in _RELEASE_MARKERS
-        matched = matched and boundary
-        official = [normalise_title(movie.get(key) or '') for key in ('title','original_title')]
-        alias = normalise_title(candidate) not in official
-        if matched and alias:
-            # Short aliases require an immediately following exact release year;
-            # "Birdman of Alcatraz" is never accepted as the Birdman alias.
-            year = str(movie.get('year') or str(movie.get('release_date') or '')[:4])
-            matched = bool(year.isdigit() and re.match(r'^'+re.escape(normalise_title(candidate))+r'\s+'+re.escape(year)+r'\b',normalise_title(raw)))
-        if matched and score > best_score:
-            best_title, best_score = candidate, score
-    if best_title is None:
-        return IdentityResult("rejected", best_score, ("Does not match requested movie title",))
-
     year_text = str(movie.get("year") or str(movie.get("release_date") or "")[:4])
     requested_year = int(year_text) if year_text.isdigit() else None
-    # Ignore a year which belongs to the movie's actual title (e.g. 1917).
-    tail = normalise_title(raw)[len(normalise_title(best_title)):].strip()
+    authoritative_match = False
+    identifier_conflict = False
+    # Inspect every supplied ID, including tagged IDs in filenames. A matching ID
+    # must never hide a conflicting ID from the other namespace or another field.
+    for movie_key, release_keys in (("imdb_id", ("imdbId", "imdb_id")), ("tmdb_id", ("tmdbId", "tmdb_id"))):
+        expected = _identifier(movie.get(movie_key))
+        values = [release.get(key) for key in release_keys]
+        pattern = r"\btt\d+\b" if movie_key == "imdb_id" else r"\btmdb[ ._:=\-]+(\d+)\b"
+        values.extend(re.findall(pattern, raw, re.I))
+        returned = {_identifier(value) for value in values} - {""}
+        if expected and returned - {expected}:
+            identifier_conflict = True
+        authoritative_match |= bool(expected and expected in returned)
+    lowered = normalise_title(raw)
+    if any(pattern.search(lowered) for pattern in _TV_EPISODE_PATTERNS + _TV_SEASON_PATTERNS):
+        return IdentityResult("rejected", 0, ("Appears to be a TV episode or season release",), selected_year=requested_year)
+    if not raw and not authoritative_match:
+        return IdentityResult("rejected", 0, ("Release title is unavailable",), selected_year=requested_year)
+
+    best_title = None
+    tail = lowered
+    for candidate in _movie_titles(movie):
+        normal = normalise_title(candidate)
+        if not normal or not (lowered == normal or lowered.startswith(normal + " ")):
+            continue
+        remainder = lowered[len(normal):].strip()
+        tokens = remainder.split()
+        # Exact title boundary, never arbitrary fuzzy overlap or extra title words.
+        boundary = not tokens or bool(_YEAR_PATTERN.fullmatch(tokens[0])) or tokens[0] in _RELEASE_MARKERS
+        if boundary and (best_title is None or len(candidate) > len(best_title)):
+            best_title, tail = candidate, remainder
     release_year = _release_year(tail)
+    delta = abs(requested_year - release_year) if requested_year and release_year else None
+    def result(state, score, reasons):
+        return IdentityResult(state, score, tuple(reasons), best_title, release_year,
+                              requested_year, bool(delta and state in {"strong", "acceptable"}))
+    if identifier_conflict:
+        return result("rejected", 0, ["Conflicting authoritative movie identifier"])
+    if authoritative_match:
+        return result("strong", 140, ["Verified matching movie identifier"] +
+                      ([f"Alternate release year ({release_year} vs {requested_year}) verified by movie identifier"] if delta else []))
+    if best_title is None:
+        return result("rejected", 0, ["Does not match requested movie title"])
     reasons = ["Strong title match"]
-    score = best_score
-    if requested_year and release_year:
-        delta = abs(requested_year - release_year)
-        if delta == 0:
-            score += 20
-            reasons.append("Release year matches")
-        elif delta == 1 and authoritative_match:
-            score += 10
-            reasons.append("Year difference verified by authoritative movie identifier")
-        else:
-            return IdentityResult("rejected", max(0, score - 35), ("Conflicting release year",), best_title, release_year)
-    state: Literal["strong", "acceptable", "suspicious", "rejected"] = "strong" if score >= 105 else "acceptable"
-    return IdentityResult(state, score, tuple(reasons), best_title, release_year)
+    if normalise_title(best_title) != normalise_title(movie.get("title")):
+        reasons.append("Known original or alternative title")
+    evidence = movie_year_evidence(movie)
+    if delta == 0:
+        return result("strong", 120, reasons + ["Release year matches"])
+    if delta and release_year in evidence:
+        return result("strong", 120, reasons + [f"Alternate release year ({release_year} vs {requested_year}) verified by {evidence[release_year]}"])
+    if delta == 1:
+        return result("acceptable", 100, reasons + [f"Alternate release year ({release_year} vs {requested_year})", "One-year difference tolerated"])
+    if delta == 2:
+        return result("suspicious", 65, reasons + ["Year differs by 2", "Additional verification required"])
+    if delta:
+        return result("rejected", 30, ["Conflicting release year"])
+    grammatical_alias = best_title not in [movie.get("title"), movie.get("original_title")] and any(
+        re.fullmatch(re.escape(best_title) + r"\s+or\s+\(.+\)", str(movie.get(key) or ""), re.I)
+        for key in ("title", "original_title"))
+    if grammatical_alias and not release_year:
+        return result("suspicious", 60, reasons + ["Shortened title needs a compatible year or movie identifier"])
+    return result("acceptable", 95, reasons + ["Year unavailable; title matched without year verification"])
 
 
 def validate_tv_release(
@@ -319,6 +362,10 @@ def apply_identity(public: dict[str, Any], identity: IdentityResult) -> dict[str
             )
             for reason in identity.reasons
         )
+    result["identity_status"] = identity.status
+    result["selected_movie_year"] = identity.selected_year
+    result["torrent_release_year"] = identity.release_year
+    result["year_tolerated"] = identity.year_tolerated
     result["match_state"] = identity.state
     result["match_score"] = identity.score
     result["match_reasons"] = list(identity.reasons)
