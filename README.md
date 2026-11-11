@@ -2,7 +2,7 @@
 
 MediaHub is a Home Assistant add-on for searching, requesting, tracking, and managing movies and TV shows through a family-friendly interface.
 
-Current corrective version: **0.19.3**. See [release interaction investigation and iPhone acceptance](docs/RELEASE_INTERACTION_V0193.md). This branch is prepared for review; Home Assistant update availability has not been verified.
+Current version: **0.19.4**. Includes evidence-based movie identity matching, alternate release years and clearer discovery diagnostics. See [matching rules and validation](docs/MOVIE_IDENTITY_YEAR_TOLERANCE.md).
 
 ## Current capabilities
 
@@ -18,7 +18,7 @@ Current corrective version: **0.19.3**. See [release interaction investigation a
 
 ## Project status
 
-The current corrective release in review is `0.19.2`, based on merged `0.19.1`. It corrects documentary category discovery, short-title movie identity, duplicate observations and partial-search feedback. Household presets and Radarr-managed handoff remain unchanged. See [investigation, limitations and live acceptance](docs/DOCUMENTARY_DISCOVERY_V0192.md), [Birdman discovery](docs/BIRDMAN_DISCOVERY_V0191.md), [mobile management](docs/MOBILE_MANAGEMENT_V019.md), and [ratings provider configuration](docs/RATINGS_DISCOVERY_V018.md).
+Version `0.19.4` is published on the add-on repository main branch for Home Assistant update discovery. Household presets and Radarr-managed acquisition remain enforced. Physical household update discovery and live tracker acquisition require verification on the installed instance.
 
 ## Release and policy architecture
 

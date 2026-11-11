@@ -1,3 +1,12 @@
+## v0.19.4
+Status: Published to the Home Assistant add-on repository main branch.
+
+- [x] Merged evidence-based movie identity and alternate-year matching.
+- [x] Preserved household filters, exact-release submission and partial search results.
+- [x] Verified 489 Python and 105 Chromium/WebKit tests in GitHub Actions.
+- [x] Publish matching add-on/runtime version 0.19.4 and update notes.
+- [ ] Confirm update discovery and the reported release on the household Home Assistant instance.
+
 ## v0.19.3
 Status: Corrective release prepared for review, not published.
 
