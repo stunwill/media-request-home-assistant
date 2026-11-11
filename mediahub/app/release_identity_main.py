@@ -209,7 +209,11 @@ async def search_movie_releases(
 
         identity = release_identity.validate_movie_release(movie, release)
         public = release_identity.apply_identity(public, identity)
-        if not public["eligible"]:
+        public["size_override_available"] = bool(public.get("size_override_available") and identity.eligible)
+        if public["size_override_available"]:
+            public["size_override_token"] = public.pop("release_token", None)
+            public["maximum_size_gb"] = rules.maximum_size_gb
+        elif not public["eligible"]:
             public.pop("release_token", None)
         evaluated.append(public)
 

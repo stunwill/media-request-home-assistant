@@ -1,3 +1,10 @@
+## 0.20.0
+
+- Administrators can explicitly confirm a maximum-size override for one selected movie release.
+- Keep oversized candidates excluded from normal eligibility, with an admin-only action and confirmation.
+- Preserve identity, resolution, seeder, Radarr, duplicate and storage checks; record override approval and submission outcomes in request audit history.
+- Keep household presets unchanged and synchronise the Home Assistant add-on/runtime version.
+
 ## 0.19.4
 
 - Accept strong movie-title matches within one year and use verified IDs or release-date evidence for larger year differences; reject conflicting movie identities.
