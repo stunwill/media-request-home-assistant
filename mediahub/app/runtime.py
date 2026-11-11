@@ -194,6 +194,7 @@ def _normalise_prowlarr_release(
         prowlarr_indexer_id = 0
 
     from .release_identity import seeder_count
+    from .prowlarr_discovery import diagnostic_id
 
     title = str(item.get("title") or "Untitled release")
     try:
@@ -201,6 +202,7 @@ def _normalise_prowlarr_release(
     except (TypeError,ValueError,OverflowError):
         age_hours = 0
     return {
+        "candidate_id": diagnostic_id(item),
         "source": "prowlarr_direct",
         "categories": item.get("categories") or [],
         "imdb_id": item.get('imdbId') or item.get('imdb_id'),
@@ -340,7 +342,7 @@ async def _search_movie_releases(
         try:
             raw_results = await prowlarr_task
         except HTTPException as error:
-            if not releases or error.status_code == 503:
+            if not releases:
                 raise
             if trace is not None:
                 trace['prowlarr_status'] = 'timeout' if error.status_code == 504 else 'provider_error'
@@ -380,7 +382,7 @@ async def _search_movie_releases(
         reverse=True,
     )
     deduplicated = []
-    seen = set()
+    seen = {}
     for item in public_results:
         cached = main.release_cache.get(item.get('release_token'))
         raw = cached[3] if cached else item
@@ -391,11 +393,17 @@ async def _search_movie_releases(
                str(item.get('title') or '').casefold(), item.get('size_gb'), item.get('quality')) if identifier else (
             str(item.get('title') or '').casefold(), str(item.get('indexer') or '').casefold(),
             item.get('size_gb'), item.get('quality'))
+        if raw.get('info_hash'):
+            key = ('hash',str(raw['info_hash']).lower(),str(item.get('title') or '').casefold(),item.get('size_gb'),item.get('quality'))
+        elif item.get('candidate_id') and not identifier:
+            key = ('candidate',item['candidate_id'])
         if key not in seen:
-            seen.add(key)
+            seen[key] = item.get('candidate_id')
             deduplicated.append(item)
         elif search_control.discovery_diagnostics.get() is not None:
             trace['merged_duplicates_removed'] = trace.get('merged_duplicates_removed', 0) + 1
+            if item.get('candidate_id'):
+                trace.setdefault('candidate_aliases',{})[item['candidate_id']] = seen[key]
     return radarr_movie, deduplicated, any(item.get("eligible") for item in deduplicated)
 
 
@@ -407,7 +415,7 @@ async def validate_direct_selection(selected, rules, movie, radarr):
     """Revalidate the authoritative token without re-discovering the torrent."""
     from . import release_identity
 
-    if release_identity.validate_movie_release(movie, selected).state == "rejected":
+    if not release_identity.validate_movie_release(movie, selected).eligible:
         raise HTTPException(status_code=409, detail="Selected release does not match this movie. Search again.")
     indexers = await search_control.stage(
         "handoff_mapping", movie["tmdb_id"], _radarr_indexers(radarr), search_control.MAPPING_SECONDS)

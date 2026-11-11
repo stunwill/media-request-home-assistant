@@ -54,7 +54,7 @@ def run_search(handler,movie=MOVIE):
 
 @pytest.mark.parametrize('title',['Birdman of Alcatraz 1962 1080p','Birdman of Alcatraz 2014 1080p',
     'Detective Conan S01E03 Birdman 2014 1080p','Dr Quinn S02E03 Birdman 2014 720p',
-    'Birdman 2015 1080p','Birdman 1080p','Birdman 2014 Season 2 1080p'])
+    'Birdman 2017 1080p','Birdman 1080p','Birdman 2014 Season 2 1080p'])
 def test_short_alias_does_not_accept_unrelated_titles(title):
     assert not release_identity.validate_movie_release(MOVIE,{'title':title}).eligible
     assert not runtime._matches_movie(title,MOVIE)

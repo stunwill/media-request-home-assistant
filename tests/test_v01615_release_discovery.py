@@ -52,16 +52,20 @@ def test_prowlarr_sibling_timeouts_preserve_results_and_cancel(hung):
             return httpx.Response(code, json=[RAW], request=httpx.Request('GET', 'http://prowlarr.test/search'))
         with patch.object(main, 'load_options', return_value={'integrations': {
             'prowlarr_url': 'http://prowlarr.test', 'prowlarr_api_key': 'private-test-key'}}), \
-             patch.object(httpx.AsyncClient, 'get', fake_get), patch.object(control, 'PROVIDER_SECONDS', .02):
-            if hung in {'both', 'auth'}:
+             patch.object(httpx.AsyncClient, 'get', fake_get), \
+             patch('mediahub.app.prowlarr_discovery.query_seconds', return_value=.01), \
+             patch('mediahub.app.prowlarr_discovery.SEARCH_SECONDS', .25):
+            if hung == 'both':
                 with pytest.raises(HTTPException) as caught:
                     await runtime._prowlarr_search(MOVIE)
-                assert caught.value.status_code == (504 if hung == 'both' else 503)
+                assert caught.value.status_code == 504
             else:
                 results = await runtime._prowlarr_search(MOVIE)
                 assert len(results) == 1
                 assert results[0]['title'] == RAW['title']
-        assert len(cancelled) == len(runtime._movie_search_terms(MOVIE)) * (2 if hung == 'both' else 1 if hung in {'movie', 'broad'} else 0)
+        initial = len(runtime._movie_search_terms(MOVIE)) * (2 if hung == 'both' else 1 if hung in {'movie', 'broad'} else 0)
+        assert len(cancelled) == initial + (2 if initial else 0)
+        assert not [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
     run(scenario())
 
 

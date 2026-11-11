@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 from time import monotonic
 
@@ -15,7 +16,7 @@ MAX_PAGES = 3
 PAGE_SIZE = 100
 MAX_ROWS = 2400
 SEARCH_SECONDS = 12
-QUERY_SECONDS = 6
+QUERY_SECONDS = 8
 MAX_RETRIES = 2
 MAX_DIAGNOSTIC_ROWS = 100
 _capability_cache = {}
@@ -103,21 +104,42 @@ def observation_score(item, movie, indexes):
             bool(item.get('downloadUrl') or item.get('magnetUrl')))
 
 
+def diagnostic_id(item):
+    # An opaque join key avoids publishing private indexer GUIDs/URLs.
+    return hashlib.sha256(repr((release_key(item), str(item.get('title')), str(item.get('size')))).encode()).hexdigest()[:24]
+
+
 def diagnostic_row(item, match, reason):
     safe = identity._safe_diagnostic
-    return {'release':safe(item.get('title')), 'source':safe(item.get('indexer') or item.get('indexerName')),
+    return {'candidate_id':diagnostic_id(item), 'release':safe(item.get('title')),
+            'source':safe(item.get('indexer') or item.get('indexerName')),
             'category':[{'id':c.get('id') if str(c.get('id') or '').isdigit() else None,
                          'name':safe(c.get('name'))} for c in categories(item.get('categories'))[:12]],
             'quality':next((value for value in ('2160p','1080p','720p') if value in str(item.get('title') or '').lower()),'Unknown'),
             'size_bytes':item.get('size') if isinstance(item.get('size'),(int,float)) else None,
-            'seeders':identity.seeder_count(item.get('seeders')), 'identity':match.state,
+            'seeders':identity.seeder_count(item.get('seeders')), 'identity':match.status,
+            'identity_confidence':match.score, 'identity_evidence':list(match.reasons),
+            'selected_movie_year':match.selected_year, 'torrent_release_year':match.release_year,
+            'year_tolerated':match.year_tolerated,
             'status':'excluded' if reason else 'candidate', 'reasons':[reason] if reason else []}
 
 
 def release_key(item):
     indexer=str(item.get('indexerId') or item.get('indexer_id') or item.get('indexer') or '')
-    identifier=item.get('guid') or item.get('infoHash') or item.get('downloadUrl')
+    info_hash=str(item.get('infoHash') or item.get('info_hash') or '').strip().lower()
+    if re.fullmatch(r'[a-f0-9]{40}|[a-f0-9]{64}', info_hash):
+        # Preserve source observations until Radarr mapping can choose a usable one.
+        return ('hash',info_hash,indexer)
+    identifier=item.get('guid') or item.get('downloadUrl')
     return (indexer,str(identifier)) if identifier else (indexer,str(item.get('title')),str(item.get('size')))
+
+
+def query_seconds():
+    try:
+        value=float(os.environ.get('MEDIAHUB_PROWLARR_QUERY_SECONDS', QUERY_SECONDS))
+        return min(10, max(1, value)) if value == value else QUERY_SECONDS
+    except (TypeError, ValueError, OverflowError):
+        return QUERY_SECONDS
 
 
 async def capabilities(client,url,key,trace):
@@ -161,7 +183,9 @@ async def search(movie):
     results=[];observations={};indexer_ids=set();errors=[];successes=0
     started=monotonic();retry_budget=MAX_RETRIES
     semaphore=asyncio.Semaphore(4)
-    async with httpx.AsyncClient(base_url=url,timeout=httpx.Timeout(6,connect=3,pool=3),
+    timeout=query_seconds()
+    trace['query_timeout_seconds']=timeout
+    async with httpx.AsyncClient(base_url=url,timeout=httpx.Timeout(timeout,connect=3,pool=3),
                                 headers={'X-Api-Key':key,'User-Agent':'MediaHub/0.19.3'}) as client:
         indexes=await capabilities(client,url,key,trace)
         trace['indexers_configured']=len(indexes) if indexes else None
@@ -196,17 +220,18 @@ async def search(movie):
                 query_started=monotonic()
                 entry['outcome']='searching'
                 try:
-                    async with asyncio.timeout(QUERY_SECONDS):
+                    async with asyncio.timeout(SEARCH_SECONDS):
                         previous=None
                         for page in range(MAX_PAGES):
                             request_params={**params,'limit':page_size,'offset':page*page_size}
                             while True:
                                 entry['attempts']+=1
                                 try:
-                                    response=await client.get('/api/v1/search',params=request_params)
+                                    async with asyncio.timeout(timeout):
+                                        response=await client.get('/api/v1/search',params=request_params)
                                     response.raise_for_status()
                                     break
-                                except (httpx.TransportError,httpx.HTTPStatusError) as error:
+                                except (httpx.TransportError,httpx.HTTPStatusError,TimeoutError) as error:
                                     transient = not isinstance(error,httpx.HTTPStatusError) or error.response.status_code in {502,503,504}
                                     # Never immediately retry 429 or authentication failures.
                                     if not transient or priority>=4 or retry_budget<=0:
@@ -232,9 +257,12 @@ async def search(movie):
                                 prior=observations.get(marker)
                                 if prior is not None and (
                                     identity.normalise_title(prior.get('title')) != identity.normalise_title(item.get('title')) or
-                                    prior.get('size') and item.get('size') and str(prior['size']) != str(item['size'])):
+                                    prior.get('size') and item.get('size') and str(prior['size']) != str(item['size']) or
+                                    any(prior.get(k) and item.get(k) and str(prior[k]) != str(item[k])
+                                        for k in ('imdbId','imdb_id','tmdbId','tmdb_id'))):
                                     # Conflicting title/size observations are not interchangeable releases.
-                                    marker=(marker,identity.normalise_title(item.get('title')),str(item.get('size')))
+                                    marker=(marker,identity.normalise_title(item.get('title')),str(item.get('size')),
+                                            tuple(str(item.get(k) or '') for k in ('imdbId','imdb_id','tmdbId','tmdb_id')))
                                     prior=observations.get(marker)
                                 if prior is not None:
                                     trace['duplicates_removed']+=1
@@ -283,9 +311,10 @@ async def search(movie):
             results.append(item)
         if len(trace['release_exclusions'])<MAX_DIAGNOSTIC_ROWS:
             trace['release_exclusions'].append(diagnostic_row(item,match,reason))
+    trace['unique_releases']=len(observations)
     trace['diagnostic_rows_omitted']=max(0,len(observations)-MAX_DIAGNOSTIC_ROWS)
     trace['prowlarr_status']='partial' if errors or trace['bounded'] else 'success'
-    if any(isinstance(error,httpx.HTTPStatusError) and error.response.status_code in {401,403} for error in errors):
+    if not successes and any(isinstance(error,httpx.HTTPStatusError) and error.response.status_code in {401,403} for error in errors):
         raise HTTPException(503,'Prowlarr credentials were rejected. Check Setup.')
     if not successes:
         if trace['bounded'] or errors and all(isinstance(error,(TimeoutError,httpx.TimeoutException)) for error in errors):

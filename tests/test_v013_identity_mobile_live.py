@@ -29,11 +29,11 @@ def test_dog_stars_rejects_krypto_episode() -> None:
     assert result.eligible is False
 
 
-def test_one_year_difference_requires_authoritative_identifier() -> None:
+def test_one_year_difference_with_authoritative_identifier() -> None:
     result = release_identity.validate_movie_release({**movie("Buffalo Soldiers", 2002), "imdb_id":"tt0252299"}, {"title": "Buffalo.Soldiers.2001.1080p.BluRay.x265", "imdbId":"tt0252299"})
     assert result.eligible is True
     assert result.release_year == 2001
-    assert "Year difference verified by authoritative movie identifier" in result.reasons
+    assert "Alternate release year (2001 vs 2002) verified by movie identifier" in result.reasons
 
 
 def test_material_year_conflict_rejected() -> None:

@@ -37,7 +37,7 @@ def test_documentaries_survive_discovery_identity_and_policy(movie,size,seeders)
 
 
 @pytest.mark.parametrize('title',['Daniel Howell Were All Doomed (2024) WEB 720p WEBRip-LAMA',
-    'Daniel Howell Were All Doomed (2023) 1080p','Daniel (2022) 1080p','Daniel Extra Words 1080p'])
+    'Daniel Howell Were All Doomed (2023) 1080p','Daniel (2020) 1080p','Daniel Extra Words 1080p'])
 def test_daniel_shared_word_is_not_identity(title):
     assert not identity.validate_movie_release(MOVIES[0][0],{'title':title}).eligible
 
