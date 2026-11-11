@@ -88,6 +88,8 @@ body{padding-bottom:env(safe-area-inset-bottom)!important}.shell{padding-bottom:
      toast(`${movie.title}: ${status==='available'?'already available in the library':'request accepted. Check Downloads for progress.'}`,'success');
      if(job.generation===generation){movieSubmission=null;closeModal();showView('downloads');}
    }catch(error){
+     // Preserve the provider's explanation while withholding URLs and credentials.
+     error.message=String(error.message||'Request failed').replace(/https?:\/\/\S+/gi,'[URL withheld]').replace(/(api[_-]?key|authorization|token|password)\s*[:=]\s*[^\s,;]+/gi,'$1=[redacted]');
      const uncertain=!!job.outcome||error.uncertain||!error.status||error.status>=500;
      if(uncertain)uncertainMovies.add(movie.tmdb_id);
      const category=job.outcome||(!error.status?'network':error.status===401?'authentication':error.status===409?'stale_or_conflict':error.status>=500?'backend':'rejected');
