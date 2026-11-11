@@ -274,7 +274,7 @@ def _prowlarr_policy(
 
     if size_gb <= 0:
         rejections.append('Release size is unavailable')
-    elif size_gb > rules.maximum_size_gb:
+    elif size_gb > rules.maximum_size_gb and not getattr(rules, "allow_size_override", False):
         rejections.append(f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit")
     if seeders is None:
         rejections.append('Seeder count is unavailable')
@@ -283,6 +283,10 @@ def _prowlarr_policy(
 
     result["policy_rejections"] = list(dict.fromkeys(rejections))
     result["eligible"] = not result["policy_rejections"]
+    result["size_override_available"] = (
+        size_gb > rules.maximum_size_gb
+        and result["policy_rejections"] == [f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit"]
+    )
     result["recent_quality_fallback"] = low_quality
     result["search_source"] = "prowlarr_direct"
     result.pop("guid", None)
@@ -369,8 +373,11 @@ async def _search_movie_releases(
             rules,
             allow_low_quality=allow_low_quality,
         )
-        if public['eligible']:
-            public["release_token"] = main.cache_release(tmdb_id, user_id, release)
+        if public['eligible'] or public.get('size_override_available'):
+            public["release_token"] = main.cache_release(tmdb_id, user_id, {
+                **release, **({'_size_override_limit_gb': rules.maximum_size_gb}
+                             if public.get('size_override_available') else {}),
+            })
         public_results.append(public)
 
     public_results.sort(

@@ -160,6 +160,7 @@ class ReleaseRules(BaseModel):
 
 
 class MovieRequestCreate(ReleaseRules):
+    allow_size_override: bool = False
     release_token: str | None = Field(default=None, min_length=16, max_length=200)
 
 
@@ -451,7 +452,7 @@ def release_with_policy(release: dict, rules: ReleaseRules) -> dict:
         resolution in quality for resolution in ("720", "1080")
     ):
         policy_rejections.append("MediaHub requires a 720p or 1080p release")
-    if not size_gb or size_gb > rules.maximum_size_gb:
+    if not size_gb or (size_gb > rules.maximum_size_gb and not getattr(rules, "allow_size_override", False)):
         policy_rejections.append(
             f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit"
         )
@@ -464,6 +465,11 @@ def release_with_policy(release: dict, rules: ReleaseRules) -> dict:
     result = dict(release)
     result["policy_rejections"] = list(dict.fromkeys(policy_rejections))
     result["eligible"] = bool(release.get("approved")) and not result["policy_rejections"]
+    result["size_override_available"] = (
+        size_gb > rules.maximum_size_gb
+        and result["policy_rejections"] == [f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit"]
+        and bool(release.get("approved")) and not release.get("rejections")
+    )
     result.pop("info_hash", None)
     result.pop("guid", None)
     return result

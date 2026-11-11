@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from datetime import date, datetime
 from typing import Any
@@ -93,7 +94,7 @@ def recent_fallback_policy(release: dict[str, Any], rules: main.ReleaseRules) ->
         policy_rejections.append("Not a supported recent-release fallback quality")
     if not _only_quality_rejections(rejections):
         policy_rejections.extend(rejections)
-    if not size_gb or size_gb > rules.maximum_size_gb:
+    if not size_gb or (size_gb > rules.maximum_size_gb and not getattr(rules, "allow_size_override", False)):
         policy_rejections.append(
             f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit"
         )
@@ -106,6 +107,10 @@ def recent_fallback_policy(release: dict[str, Any], rules: main.ReleaseRules) ->
 
     result["policy_rejections"] = list(dict.fromkeys(policy_rejections))
     result["eligible"] = not result["policy_rejections"]
+    result["size_override_available"] = (
+        size_gb > rules.maximum_size_gb
+        and result["policy_rejections"] == [f"Release exceeds the {rules.maximum_size_gb:g} GB movie limit"]
+    )
     result["recent_quality_fallback"] = True
     result["quality_warning"] = (
         "Temporary low-quality release. MediaHub normally prefers 720p/1080p and only "
@@ -140,16 +145,24 @@ async def search_movie_releases(
     for release in releases:
         public = main.release_with_policy(release, rules)
         public["recent_quality_fallback"] = False
-        public["release_token"] = main.cache_release(tmdb_id, user_id, release)
+        public["release_token"] = main.cache_release(tmdb_id, user_id, {
+            **release, **({'_size_override_limit_gb': rules.maximum_size_gb}
+                         if public.get('size_override_available') else {}),
+        })
         strict_public.append(public)
 
     if any(item["eligible"] for item in strict_public) or not await asyncio.to_thread(is_recent_movie, movie):
         return radarr_movie, strict_public, False
 
     fallback_public: list[dict[str, Any]] = []
-    for release in releases:
-        public = recent_fallback_policy(release, rules)
-        public["release_token"] = main.cache_release(tmdb_id, user_id, release)
+    for release, strict in zip(releases, strict_public):
+        # An otherwise valid HD candidate must remain available for size approval,
+        # even when the recent-release fallback is considered for other rows.
+        public = strict if strict.get('size_override_available') else recent_fallback_policy(release, rules)
+        public["release_token"] = main.cache_release(tmdb_id, user_id, {
+            **release, **({'_size_override_limit_gb': rules.maximum_size_gb}
+                         if public.get('size_override_available') else {}),
+        })
         fallback_public.append(public)
 
     # Keep the full release list visible, but replace strict rejection results with
@@ -327,6 +340,11 @@ async def request_movie(
 ) -> dict[str, Any]:
     from . import runtime
 
+    if payload.allow_size_override:
+        main.administrator(principal)
+        if not payload.release_token:
+            raise HTTPException(422, "A size override requires an explicit release selection.")
+
     # Validate ownership/expiry before contacting any integration.
     selected_token = (main.cached_release(payload.release_token, tmdb_id, principal.user_id)
                       if payload.release_token else None)
@@ -337,6 +355,15 @@ async def request_movie(
         movie = {**movie, "tmdb_id": tmdb_id}
     except MediaServiceError as error:
         raise main.service_http_error(error) from error
+
+    if selected_token is not None:
+        from . import release_identity
+        if not release_identity.validate_movie_release(movie, selected_token).eligible:
+            raise HTTPException(409, "Selected release does not match this movie. Search again.")
+        if payload.allow_size_override and selected_token.get('_size_override_limit_gb') != payload.maximum_size_gb:
+            raise HTTPException(409, "The size-limit selection expired or the preset changed. Search again and confirm the current limit.")
+        if payload.allow_size_override and float(selected_token.get("size_gb") or 0) <= payload.maximum_size_gb:
+            raise HTTPException(409, "This release no longer requires a size override. Search again.")
 
     def find_duplicate():
         with main.connect_db() as db:
@@ -404,6 +431,14 @@ async def request_movie(
                     status_code=409,
                     detail="The selected release is no longer available. Search again.",
                 )
+            if payload.allow_size_override and (
+                float(selected.get("size_gb") or 0) != float(selected_token.get("size_gb") or 0)
+                or selected.get("size_bytes") != selected_token.get("size_bytes")
+                or selected.get("title") != selected_token.get("title")
+            ):
+                raise HTTPException(409, "The selected release changed. Search again and confirm its current size.")
+            if not release_identity.validate_movie_release(movie, selected).eligible:
+                raise HTTPException(409, "Selected release does not match this movie. Search again.")
             selected_public = main.release_with_policy(selected, payload)
             if not selected_public["eligible"] and is_recent_movie(movie):
                 selected_public = recent_fallback_policy(selected, payload)
@@ -523,6 +558,12 @@ async def request_movie(
                 details={
                     "tmdb_id": tmdb_id,
                     "title": movie["title"],
+                    "size_override": {
+                        "approved": payload.allow_size_override,
+                        "configured_maximum_size_gb": payload.maximum_size_gb,
+                        "release_size_gb": selected["size_gb"],
+                        "release_id": hashlib.sha256(str(selected['guid']).encode()).hexdigest(),
+                    },
                     "recent_quality_fallback": fallback_active,
                     "release_source": selected.get("source", "radarr"),
                     "radarr_indexer_id": selected["indexer_id"],
@@ -598,6 +639,7 @@ async def request_movie(
                 details={
                     "indexer": selected["indexer"],
                     "quality": selected["quality"],
+                    "size_override_approved": payload.allow_size_override,
                     "recent_quality_fallback": fallback_active,
                 },
             )

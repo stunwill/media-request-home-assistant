@@ -2,7 +2,7 @@
 
 MediaHub is a Home Assistant add-on for searching, requesting, tracking, and managing movies and TV shows through a family-friendly interface.
 
-Current version: **0.19.4**. Includes evidence-based movie identity matching, alternate release years and clearer discovery diagnostics. See [matching rules and validation](docs/MOVIE_IDENTITY_YEAR_TOLERANCE.md).
+Current proposed version: **0.20.0**. Adds admin-only per-release size overrides. See [usage and implementation](docs/ADMIN_SIZE_OVERRIDE.md). Includes evidence-based movie identity matching, alternate release years and clearer discovery diagnostics. See [matching rules and validation](docs/MOVIE_IDENTITY_YEAR_TOLERANCE.md).
 
 ## Current capabilities
 

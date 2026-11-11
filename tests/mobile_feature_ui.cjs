@@ -10,7 +10,7 @@ let timerId = 100000, requests = 0; const calls=[];const pendingTV=[];
 const movie = {tmdb_id:653574,title:'The Donut King',original_title:'The Donut King',year:'2020',rating:7,
   release_date:'2020-10-30',genres:[],cast:[],overview:'Documentary',context:'browse',lifecycle:{state:'released_unknown'},lifecycle_message:{},library:{}};
 const release = {title:'The Donut King 2020 1080p WEBRip',quality:'1080p',indexer:'IPTorrents',size_gb:1.53,seeders:169,eligible:true,release_token:'opaque',flags:[],policy_rejections:[]};
-let win, releaseScrolls=0;
+let win, releaseScrolls=0, failSubmission=false;
 const dom = new JSDOM(html, {url:'https://ha.test/api/hassio_ingress/test-token/', runScripts:'dangerously', pretendToBeVisual:true, virtualConsole:vc,
   beforeParse(w) {
     Object.defineProperty(w,'innerWidth',{value:Number(process.argv[3]||390)});Object.defineProperty(w,'innerHeight',{value:Number(process.argv[4]||844)});win=w;const Observer=w.MutationObserver;w.MutationObserver=class extends Observer{constructor(fn){super(fn);observers.push(this);}};w.IntersectionObserver=class{observe(){} unobserve(){} disconnect(){}};w.Headers=Headers;w.AbortController=AbortController;
@@ -23,6 +23,7 @@ const dom = new JSDOM(html, {url:'https://ha.test/api/hassio_ingress/test-token/
     w.clearTimeout=id=>{if(deadlines.has(id))deadlines.delete(id);else clear(id);};
     w.fetch=async (url, options={})=>{
       calls.push({url:String(url),options});assert(!String(url).startsWith('/'), 'API must remain relative for HA ingress');
+      if(failSubmission&&/movies\/\d+\/request$/.test(url))return {ok:false,status:422,json:async()=>({detail:'Radarr cutoff not met; https://private.test/?apikey=private; token=private'})};
       if (/movies\/\d+\/releases/.test(url)) {
         requests++;
         return await new Promise((resolve,reject)=>pending.push({url,options,resolve:data=>resolve({ok:true,json:async()=>data}),reject,
@@ -34,6 +35,7 @@ const dom = new JSDOM(html, {url:'https://ha.test/api/hassio_ingress/test-token/
       else if(String(url).includes('ratings/availability'))body={sources:Object.fromEntries(['tmdb','imdb','rt_critic','rt_audience','metacritic','letterboxd','trakt'].map(id=>[id,{enabled:true,verified_cached:10}]))};
       else if(url==='api/ratings')body={ratings:{'653574':{rt_critic:{value:87,status:'verified',provider:'omdb'}},'42':{rt_critic:{value:70,status:'verified',provider:'omdb'}}},configured:true};
       else if(url==='api/users/me')body={id:'test',role:'admin',display_name:'Test',auth_source:'ingress'};
+      else if(/movies\/\d+\/request$/.test(url))body={request:{status:'queued'}};
       else if(/catalog\/movies\/\d+$/.test(url))body={...movie,tmdb_id:Number(String(url).split('/').at(-1))};
       else if(/catalog\/tv\/\d+$/.test(url))body={...movie,tmdb_id:42,id:42,name:'TV',media_type:'tv',seasons:[{season_number:1,name:'Season 1',air_date:'2020-01-01'}]};
       else if(/genres/.test(url))body=[];
@@ -104,6 +106,23 @@ const q=id=>win.document.getElementById(id);
  assert(q('downloads').querySelector('[data-group="2"]').textContent.includes('Actual indexer failure'));
  assert(q('downloads').querySelector('[data-group="2"]').textContent.includes('TV'));
  assert(!q('downloads').querySelector('[data-group="1"]').open);
+ // Oversized candidates stay excluded and require a cancellable explicit approval.
+ await evaluate('openMovie(653574)');await wait(20);
+ const oversized={...release,eligible:false,size_gb:6.26,seeders:2,release_token:null,size_override_available:true,size_override_token:'large-opaque',maximum_size_gb:3,policy_rejections:['Release exceeds the 3 GB movie limit']};
+ pending.at(-1).resolve({releases:[oversized]});await wait(30);
+ const override=q('release-area').querySelector('[data-size-override]');assert(override);
+ assert.equal(override.closest('.release').dataset.eligible,'false');assert.equal(q('release-area').querySelectorAll('.best-badge').length,0);
+ const beforeOverride=calls.filter(c=>/movies\/\d+\/request$/.test(c.url)).length;
+ override.click();let confirmation=q('release-area').querySelector('.size-override-confirmation');assert(confirmation.textContent.includes('6.26 GB'));assert(confirmation.textContent.includes('3.00 GB'));
+ confirmation.querySelector('[data-size-cancel]').click();assert(!q('release-area').querySelector('.size-override-confirmation'));assert(!override.disabled);
+ assert.equal(calls.filter(c=>/movies\/\d+\/request$/.test(c.url)).length,beforeOverride);
+ failSubmission=true;override.click();confirmation=q('release-area').querySelector('.size-override-confirmation');confirmation.querySelector('[data-size-confirm]').click();await wait(25);
+ assert(q('detail').querySelector('.release-feedback').textContent.includes('Radarr cutoff not met'));
+ assert(!win.document.querySelector('.toast-region').textContent.includes('private'));
+ failSubmission=false;override.click();confirmation=q('release-area').querySelector('.size-override-confirmation');confirmation.querySelector('[data-size-confirm]').click();await wait(25);
+ const submitted=calls.filter(c=>/movies\/\d+\/request$/.test(c.url));assert.equal(submitted.length,beforeOverride+2);
+ assert.equal(JSON.parse(submitted.at(-1).options.body).allow_size_override,true);assert.equal(JSON.parse(submitted.at(-1).options.body).release_token,'large-opaque');
+ assert(q('modal').classList.contains('hidden'));
  observers.forEach(o=>o.disconnect());await wait(20);
  assert.equal(errors.length,0,errors.map(e=>e.stack||String(e)).join('\n'));
  console.log('Mobile feature UI passed: automatic discovery, dark bottom action, navigation, notifications, RT filters for movies/TV and expanded history.');

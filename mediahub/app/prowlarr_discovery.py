@@ -186,7 +186,7 @@ async def search(movie):
     timeout=query_seconds()
     trace['query_timeout_seconds']=timeout
     async with httpx.AsyncClient(base_url=url,timeout=httpx.Timeout(timeout,connect=3,pool=3),
-                                headers={'X-Api-Key':key,'User-Agent':'MediaHub/0.19.4'}) as client:
+                                headers={'X-Api-Key':key,'User-Agent':'MediaHub/0.20.0'}) as client:
         indexes=await capabilities(client,url,key,trace)
         trace['indexers_configured']=len(indexes) if indexes else None
         cats=movie_categories(indexes,movie) or [2000]  # Prowlarr's normalized parent, never a tracker-local ID.

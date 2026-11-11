@@ -542,7 +542,16 @@ class RadarrClient:
         decision = next((item for item in decisions if isinstance(item, dict)
                          and item.get("mappedMovieId") == movie_id), None)
         if decision is None or decision.get("rejected") or not decision.get("approved"):
-            raise MediaServiceError("Radarr rejected the selected Prowlarr release. Check its quality profile and download configuration.", status_code=422)
+            from .download_management import safe_text
+            reasons = (decision or {}).get("rejections") or []
+            if isinstance(reasons, str):
+                reasons = [reasons]
+            messages = [safe_text(reason.get("reason") or reason.get("message"))
+                        if isinstance(reason, dict) else safe_text(reason) for reason in reasons[:10]]
+            explanation = "; ".join(message for message in messages if message)
+            raise MediaServiceError(
+                "Radarr rejected the selected Prowlarr release. " +
+                (explanation or "Check its quality profile and download configuration."), status_code=422)
         # A push HTTP 200 is a decision, not proof of a successful grab. Radarr can
         # swallow download-client failures. Require a new exact grabbed event.
         history = await self._request("GET", "/api/v3/history/movie", params={"movieId": movie_id})

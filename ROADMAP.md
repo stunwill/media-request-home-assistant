@@ -1,3 +1,10 @@
+## v0.20.0
+Status: Prepared for review, not merged or published.
+
+- [x] Admin-only, per-release movie size override and explicit confirmation.
+- [x] Preserve other restrictions and audit approval against the request outcome.
+- [ ] Verify live Home Assistant update discovery and tracker acquisition after publication.
+
 ## v0.19.4
 Status: Published to the Home Assistant add-on repository main branch.
 

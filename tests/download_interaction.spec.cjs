@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const html=process.env.MEDIAHUB_TEST_HTML?fs.readFileSync(process.env.MEDIAHUB_TEST_HTML,'utf8'):execFileSync(process.env.MEDIAHUB_TEST_PYTHON||'python',['-c','from mediahub.app.watchlist_main import main; print(main.INDEX_HTML)'],{encoding:'utf8',maxBuffer:2e6});
 test.use({viewport:{width:393,height:852},isMobile:true,hasTouch:true});
 const movie={tmdb_id:123,title:'The Weight',year:'2026',rating:8,genres:[],cast:[],overview:'Synopsis '.repeat(120),context:'browse',lifecycle:{},lifecycle_message:{},library:{}};
-async function fixture(page,{outcome='success',delay=0,searchDelay=0,count=25}={}){
+async function fixture(page,{outcome='success',delay=0,searchDelay=0,count=25,sizeOverride=false,role='admin'}={}){
  let releaseBatch=0;const calls=[],errors=[],paths=[];page.on('pageerror',e=>errors.push(e.message));
  if(process.env.MEDIAHUB_BASELINE_TRACE){
   page.on('console',msg=>{if(msg.text().startsWith('BASELINE_'))console.log(msg.text());});
@@ -22,12 +22,12 @@ async function fixture(page,{outcome='success',delay=0,searchDelay=0,count=25}={
   if(path==='/api/hassio_ingress/test/')return route.fulfill({contentType:'text/html',body:html});
   if(path.endsWith('.png'))return route.fulfill({status:204});
   let body={};
-  if(path.endsWith('users/me'))body={id:'test',role:'admin',display_name:'Tester',auth_source:'home_assistant',csrf_token:'fixture-csrf'};
+  if(path.endsWith('users/me'))body={id:'test',role,display_name:'Tester',auth_source:'home_assistant',csrf_token:'fixture-csrf'};
   else if(path.includes('/genres'))body={genres:[]};
   else if(path.includes('/discovery/')||path.endsWith('/catalog/movies'))body={movies:[movie],shows:[],page:1,total_pages:1,total_results:1};
   else if(path.endsWith('catalog/movies/123'))body=movie;
   else if(path.endsWith('catalog/movies/124'))body={...movie,tmdb_id:124,title:'Another Movie'};
-  else if(path.includes('/movies/123/releases')){await new Promise(r=>setTimeout(r,searchDelay));const batch=releaseBatch++;body={releases:Array.from({length:count},(_,i)=>({title:`The.Weight.2026.1080p.WEB-${i}`,eligible:true,release_token:batch?`fresh-release-token-${batch}-${i}`:`exact-release-token-${i}`,indexer:'Fixture',quality:'1080p',size_gb:2,seeders:12})),search_message:'Eligible releases'};}
+  else if(path.includes('/movies/123/releases')){await new Promise(r=>setTimeout(r,searchDelay));const batch=releaseBatch++;body={releases:Array.from({length:count},(_,i)=>({title:`The.Weight.2026.1080p.WEB-${i}`,eligible:true,release_token:batch?`fresh-release-token-${batch}-${i}`:`exact-release-token-${i}`,indexer:'Fixture',quality:'1080p',size_gb:2,seeders:12})),search_message:'Eligible releases'};if(sizeOverride)body={releases:[{title:'The Killing of Two Lovers 2020 1080p AMZN WEB-DL DDP5 1 H264-CMRG',eligible:false,size_override_available:true,size_override_token:'oversized-release-token',maximum_size_gb:3,size_gb:6.26,seeders:2,indexer:'Fixture',quality:'1080p',policy_rejections:['Release exceeds the 3 GB movie limit']}],search_message:'No eligible releases'};}
   else if(path.endsWith('/movies/123/request')){
    calls.push({body:req.postDataJSON(),headers:req.headers()});
    if(outcome==='network')return route.abort('failed');
@@ -123,4 +123,17 @@ test('best-release action reports HTTP 200 storage rejection without false accep
 
 test('missing release identity cannot fall through to best-release acquisition',async({page})=>{
  const {app,calls}=await fixture(page);const b=app.locator('[data-token]').first();await b.evaluate(el=>el.dataset.token='');await b.tap();await expect(app.locator('.toast')).toContainText('selection is stale');await expect(b).toBeEnabled();expect(calls).toHaveLength(0);
+});
+
+for(const role of ['admin','manager','requester'])test(`size override access for ${role}`,async({page})=>{
+ const {app,calls,errors}=await fixture(page,{sizeOverride:true,role});
+ const excluded=app.locator('#release-area details').filter({hasText:'Unavailable releases'});await excluded.locator('summary').first().click();
+ const button=app.getByRole('button',{name:'Allow size-limit override',exact:true});
+ if(role!=='admin'){await expect(button).toHaveCount(0);expect(calls).toHaveLength(0);return;}
+ await button.click();const panel=app.getByRole('group',{name:'Confirm size-limit override'});
+ await expect(panel).toContainText('6.26 GB');await expect(panel).toContainText('3.00 GB');await expect(panel).toContainText('CMRG');
+ expect(calls).toHaveLength(0);await panel.getByRole('button',{name:'Cancel',exact:true}).click();await expect(panel).toHaveCount(0);await expect(button).toBeEnabled();expect(calls).toHaveLength(0);
+ await button.click();await panel.getByRole('button',{name:'Download with size override',exact:true}).click();
+ await expect.poll(()=>calls.length).toBe(1);expect(calls[0].body.allow_size_override).toBe(true);expect(calls[0].body.release_token).toBe('oversized-release-token');
+ await expect(app.locator('#downloads-view')).toBeVisible();expect(errors).toEqual([]);
 });

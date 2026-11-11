@@ -5,6 +5,7 @@ body{padding-bottom:env(safe-area-inset-bottom)!important}.shell{padding-bottom:
 .topbar{height:auto;min-height:60px;gap:10px;padding-top:max(6px,env(safe-area-inset-top));padding-bottom:6px;flex-wrap:wrap}.topbar nav{display:flex!important;flex:1;justify-content:flex-end;flex-wrap:wrap;gap:2px}.topbar nav button{min-height:44px;padding:8px 10px;font-size:.85rem}.topbar .brand{cursor:pointer}.topbar .brand img{width:120px}.topbar .user{display:none}.header-more{position:relative}.header-more summary{cursor:pointer;min-height:44px;padding:12px 8px;font-size:.85rem}.header-more-items{position:absolute;right:0;top:100%;min-width:150px;display:grid;background:#111620;border:1px solid var(--border);border-radius:10px;padding:6px;z-index:30}
 .detail-toolbar{position:sticky;top:0;z-index:115;background:#111620;padding:8px max(12px,env(safe-area-inset-left));padding-top:max(8px,env(safe-area-inset-top));border-bottom:1px solid var(--border)}.detail-toolbar nav{display:flex;gap:8px;margin-bottom:6px}.detail-controls{display:flex;justify-content:space-between;align-items:center}.detail-toolbar .close,.detail-toolbar .mobile-modal-back{position:static!important;display:inline-flex!important;align-items:center;min-height:44px;min-width:44px}.dialog{padding-top:0!important}.detail-body{padding-bottom:calc(24px + env(safe-area-inset-bottom))!important}
 .toast{position:static;max-width:100%;padding:10px 14px;margin:0;border-radius:10px;pointer-events:auto}.toast-region{position:relative;z-index:120;display:grid;gap:6px;margin:0 max(12px,env(safe-area-inset-left));pointer-events:none}.toast-region:not(:empty){padding-block:6px}.detail-toolbar .toast-region{margin:0}.toast-dismiss{float:right;margin-left:10px;border:0;background:transparent;color:inherit;min-width:32px;min-height:32px}.release-feedback{font-size:.8rem;line-height:1.5;margin-top:8px;overflow-wrap:anywhere}.release-feedback[role="alert"]{color:var(--danger)}.release-loading{padding:12px;color:var(--muted)}#auto-request,.best-tv-request{background:var(--surface-2)!important;border:1px solid #74699c!important;min-height:44px;width:100%}.release-actions-bottom{margin-top:14px}.discovery-tools{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}.rt-score{font-size:.76rem;color:#eebf88}.catalogue-notice{color:var(--warning);font-size:.8rem;margin:10px 0}
+.size-override-confirmation{grid-column:1/-1;min-width:0;overflow-wrap:anywhere;border-top:1px solid var(--border);padding-top:10px}.size-override-confirmation .button{white-space:normal;margin:4px 4px 4px 0}
 .history-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--border);border-radius:12px}.history-table{width:100%;border-collapse:collapse;font-size:.83rem;table-layout:fixed}.history-table th,.history-table td{text-align:left;padding:10px 9px;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.history-table th{color:var(--muted);font-weight:750}.history-table th:first-child{width:30%}.history-table th:last-child{width:18%}.history-table .status{display:inline-block;white-space:normal}.history-table button.history-title{border:0;padding:0;background:transparent;color:var(--text);font-weight:750;text-align:left;line-height:1.4;min-height:36px}.history-details td{background:#0d1119;padding:12px}.history-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.history-fields dt{font-size:.72rem;color:var(--muted)}.history-fields dd{margin:3px 0;overflow-wrap:anywhere}.history-paging{display:flex;align-items:center;gap:10px;margin-top:12px}.history-table .processing{color:#c8bdff}.history-table .requested{color:var(--muted)}
 @media(max-width:760px){.history-table{font-size:.78rem}.history-table th:first-child{width:35%}.history-table th:last-child{width:26%}.history-table th,.history-table td{padding:8px 6px}.history-table .secondary-column{display:none}.history-fields{grid-template-columns:1fr 1fr}.topbar #users-nav,.topbar #logout,.topbar [data-view="watchlist"]{font-size:.75rem}.topbar .brand img{width:108px}.detail-hero{padding-top:18px}.detail-toolbar nav button{min-height:44px}.detail-toolbar nav{justify-content:space-between}.history-table .status{padding:4px 6px;font-size:.69rem}}
 </style>
@@ -49,7 +50,18 @@ body{padding-bottom:env(safe-area-inset-bottom)!important}.shell{padding-bottom:
    if(error){for(const [label,action] of [['Refresh releases',()=>findReleases(false)],['Review Downloads',()=>showView('downloads')]]){const recovery=document.createElement('button');recovery.type='button';recovery.className='button';recovery.textContent=label;recovery.onclick=action;feedback.append(recovery);}}
  }
  function cancelMovieSubmission(){if(movieSubmission)movieSubmission.cancel('cancelled');}
- submitRequest=async function(token,button){
+ window.confirmSizeOverride=function(button){
+   if(submitting||!button?.isConnected||button.disabled)return;
+   const card=button.closest('.release');if(!card||card.querySelector('.size-override-confirmation'))return;
+   const panel=document.createElement('div');panel.className='size-override-confirmation';panel.setAttribute('role','group');panel.setAttribute('aria-label','Confirm size-limit override');
+   const title=card.querySelector('h4')?.textContent||'Selected release';
+   panel.innerHTML=`<p><strong>${esc(title)}</strong><br>This release is ${Number(button.dataset.releaseSize).toFixed(2)} GB. Your movie size limit is ${Number(button.dataset.sizeLimit).toFixed(2)} GB. Allow this release for this download only?</p><p>Reported seeders may be stale and do not guarantee availability.</p><button type="button" class="button" data-size-cancel>Cancel</button><button type="button" class="button primary" data-size-confirm>Download with size override</button>`;
+   card.append(panel);button.disabled=true;
+   panel.querySelector('[data-size-cancel]').onclick=()=>{panel.remove();button.disabled=false;button.focus();};
+   panel.querySelector('[data-size-confirm]').onclick=()=>{panel.remove();button.disabled=false;submitRequest(button.dataset.sizeOverride,button,true);};
+   panel.querySelector('[data-size-cancel]').focus();
+ };
+ submitRequest=async function(token,button,allowSizeOverride=false){
    const movie=state.movie;if(!movie||!button?.isConnected)return;
    const exact=token!==null;
    if(exact&&(!token||!button.closest('#release-area'))){toast('This release selection is stale. Refresh releases and choose again.','error');return;}
@@ -66,7 +78,7 @@ body{padding-bottom:env(safe-area-inset-bottom)!important}.shell{padding-bottom:
    try{
      const stopped=new Promise((_,reject)=>{rejectStop=reject;});timer=setTimeout(()=>job.cancel('timeout'),22000);
      downloadTrace(job,'request_started');
-     const result=await Promise.race([api(`movies/${movie.tmdb_id}/request`,{method:'POST',headers:{'Content-Type':'application/json','X-MediaHub-Correlation-ID':job.id},body:JSON.stringify({...rules(),release_token:token}),signal:job.controller.signal}),stopped]);
+     const result=await Promise.race([api(`movies/${movie.tmdb_id}/request`,{method:'POST',headers:{'Content-Type':'application/json','X-MediaHub-Correlation-ID':job.id},body:JSON.stringify({...rules(),release_token:token,allow_size_override:allowSizeOverride}),signal:job.controller.signal}),stopped]);
      const status=result.request?.status||result.status;
      if(!['queued','available','downloading','processing','pending_approval','approved'].includes(status)){
        const error=new Error(status==='rejected'?'Storage policy rejected this request. Check Downloads for details.':'The server did not confirm acceptance. Check Downloads before retrying.');
@@ -76,11 +88,13 @@ body{padding-bottom:env(safe-area-inset-bottom)!important}.shell{padding-bottom:
      toast(`${movie.title}: ${status==='available'?'already available in the library':'request accepted. Check Downloads for progress.'}`,'success');
      if(job.generation===generation){movieSubmission=null;closeModal();showView('downloads');}
    }catch(error){
+     // Preserve the provider's explanation while withholding URLs and credentials.
+     error.message=String(error.message||'Request failed').replace(/https?:\/\/\S+/gi,'[URL withheld]').replace(/(api[_-]?key|authorization|token|password)\s*[:=]\s*[^\s,;]+/gi,'$1=[redacted]');
      const uncertain=!!job.outcome||error.uncertain||!error.status||error.status>=500;
      if(uncertain)uncertainMovies.add(movie.tmdb_id);
      const category=job.outcome||(!error.status?'network':error.status===401?'authentication':error.status===409?'stale_or_conflict':error.status>=500?'backend':'rejected');
      job.outcome=category;downloadTrace(job,'request_failed',{category,http_status:error.status||null});
-     const message=uncertain?'Submission not confirmed. Check Downloads before retrying.':error.status===401?'Your session expired. Sign in again, then refresh releases.':error.status===409?'This selection expired, changed, or was already requested. Check Downloads, then refresh releases.':error.status===403?'You do not have permission to request this release. Contact your MediaHub administrator.':error.status===422?'This release no longer meets the requirements. Refresh releases to review current choices.':error.status===200?error.message:'The selected release was rejected. Refresh releases to review current choices, or check Setup.';
+     const message=uncertain?'Submission not confirmed. Check Downloads before retrying.':error.status===401?'Your session expired. Sign in again, then refresh releases.':error.status===409?'This selection expired, changed, or was already requested. Check Downloads, then refresh releases.':error.status===403?'You do not have permission to request this release. Contact your MediaHub administrator.':error.status===422?error.message:error.message||'The selected release was rejected. Refresh releases to review current choices, or check Setup.';
      if(job.generation===generation){releaseFeedback(button,message,true);toast(message+' Reference: '+job.id.slice(0,8),'error');}
    }finally{
      clearTimeout(timer);if(movieSubmission===job)movieSubmission=null;submitting=false;
