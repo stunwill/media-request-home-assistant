@@ -1,3 +1,12 @@
+## 0.19.4
+
+- Accept strong movie-title matches within one year and use verified IDs or release-date evidence for larger year differences; reject conflicting movie identities.
+- Show identity evidence, selected/torrent years, tolerated differences and final eligibility separately from household preset exclusions.
+- Preserve successful discovery results during partial provider failures and improve bounded query timeouts, retries and release deduplication.
+- Keep configured size, resolution, seeders, compatibility and Radarr restrictions enforced.
+- Pin CI to supported Ubuntu 24.04; 489 Python and 105 Chromium/WebKit tests passed for the matching implementation.
+- Bump the Home Assistant add-on and runtime versions together so existing 0.19.3 installations can discover this update.
+
 ## 0.19.3
 
 - Fix a reproduced BEST MATCH observer loop that froze rendering, Download feedback and navigation after a release button became disabled. Eligibility now stays independent of request processing and one decorator owns the badge.
